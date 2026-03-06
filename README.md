@@ -1,4 +1,4 @@
-# tokio_ipc_bench
+# knitting-vs-tokio-bench
 
 This repo compares a Rust `tokio::sync::mpsc` echo path against a JavaScript/TypeScript [`@vixeny/knitting`](https://jsr.io/@vixeny/knitting) echo path.
 
@@ -18,12 +18,76 @@ Both sides use the same reporting shape:
 - per-batch timing
 - sorted samples with `avg`, `min`, `p75`, `p99`, `max`
 
+## Sample Results
+
+Example output from one local run on the machine hard-coded in the benchmark header (`Ryzen 9 5950X ~4.55GHz`), with Tokio pinned to `worker_threads = 1` and knitting configured with `threads: 1`:
+
+```text
+$ cargo run --release --quiet
+cpu: Ryzen 9 5950X ~4.55GHz
+runtime: tokio 1.x mpsc (worker_threads = 1)
+task: send payload -> worker echo -> return, join_all
+(whole-batch latency; warmup n=1: 200, others: 50)
+(string/bytes use 4 payload variants rotated with index % 4)
+
+--- large string: 1MB (1048576 bytes) ---
+batch             avg          min          p75          p99          max
+----------------------------------------------------------------------
+n=1          74.53 µs     47.02 µs     89.33 µs    138.22 µs    672.62 µs
+n=10          2.80 ms      1.55 ms      3.16 ms      4.54 ms      5.47 ms
+n=100        62.88 ms     46.97 ms     67.06 ms     76.92 ms     94.66 ms
+
+--- number: f64 (8 bytes) ---
+batch             avg          min          p75          p99          max
+----------------------------------------------------------------------
+n=1           8.22 µs      6.62 µs      8.03 µs     13.60 µs    150.75 µs
+n=10          9.14 µs      6.40 µs      9.27 µs     10.77 µs    112.05 µs
+n=100        43.61 µs     37.46 µs     41.47 µs    234.96 µs    299.49 µs
+
+--- Uint8Array: 1MB (1048576 bytes) ---
+batch             avg          min          p75          p99          max
+----------------------------------------------------------------------
+n=1         248.63 µs     49.65 µs    214.41 µs      2.49 ms      5.51 ms
+n=10          4.96 ms      2.58 ms      5.32 ms      8.40 ms     12.07 ms
+n=100        65.84 ms     49.63 ms     70.64 ms     77.37 ms     81.08 ms
+
+$ bun run src/main.ts
+runtime: bun 1.2.20
+task: send payload -> worker echo -> return, join_all
+(whole-batch latency; warmup n=1: 200, others: 50)
+(string/bytes use 4 payload variants rotated with index % 4)
+
+--- knitting large string (1048576 bytes) ---
+batch             avg          min          p75          p99          max
+----------------------------------------------------------------------
+n=1           2.17 ms    568.08 µs      2.04 ms     12.87 ms     20.88 ms
+n=10          7.87 ms      5.14 ms      8.59 ms     14.08 ms     16.69 ms
+n=100        65.61 ms     57.76 ms     67.90 ms     87.63 ms     98.38 ms
+
+--- knitting number f64 (8 bytes) ---
+batch             avg          min          p75          p99          max
+----------------------------------------------------------------------
+n=1           4.37 µs      2.09 µs      4.21 µs     16.34 µs     69.44 µs
+n=10          9.41 µs      6.08 µs     10.31 µs     20.40 µs     66.67 µs
+n=100        49.62 µs     36.18 µs     51.70 µs     94.05 µs    175.59 µs
+
+--- knitting Uint8Array (1048576 bytes) ---
+batch             avg          min          p75          p99          max
+----------------------------------------------------------------------
+n=1           1.38 ms    501.05 µs      1.76 ms      3.49 ms      3.85 ms
+n=10          6.47 ms      4.68 ms      7.16 ms      9.47 ms     10.19 ms
+n=100        58.98 ms     44.50 ms     61.07 ms     76.16 ms     84.59 ms
+```
+
+Treat those numbers as a concrete scale reference, not a universal truth. If you run this on another CPU, memory subsystem, runtime version, or under a different system load, the absolute numbers will move.
+
 ## How To Read It
 
-Two of the big benchmark-shape problems have already been fixed.
+Three of the big benchmark-shape problems have already been fixed.
 
 - Dispatch is aligned. Rust now fans requests out concurrently with spawned tasks and waits with `join_all(...)`, which matches knitting creating all `pool.call.*(...)` promises and then awaiting `Promise.all(...)`.
 - Timing is aligned. The TypeScript side no longer uses `mitata`; both implementations now use the same hand-rolled warmup, iteration, timing, and summary logic.
+- Runtime width is aligned. Knitting uses `threads: 1`, and the Rust benchmark uses `#[tokio::main(worker_threads = 1)]` so the sender fan-out cannot spread across a larger Tokio worker pool.
 
 That leaves one important asymmetry, and it is intentional: memory management.
 

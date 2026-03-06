@@ -8,7 +8,7 @@
   "dependencies": {
     "@vixeny/knitting": "npm:@jsr/vixeny__knitting@0.1.17"
   },
-  "name": "tokio_ipc_bench",
+  "name": "knitting-vs-tokio-bench",
   "module": "src/main.ts",
   "type": "module",
   "private": true,

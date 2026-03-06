@@ -1,21 +1,10 @@
 [package]
-name = "tokio_ipc_bench"
+name = "knitting-vs-tokio-bench"
 version = "0.0.1"
 edition = "2021"
 
 [dependencies]
 tokio = { version = "1.49", features = ["rt-multi-thread", "sync", "macros"] }
-bytes = "1.7"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 futures = "0.3"
-
-[dev-dependencies]
-criterion = "0.5"
-tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
-futures = "0.3"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-
 
 

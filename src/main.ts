@@ -7,8 +7,24 @@ const WARMUP_N1 = 200;
 const PAYLOAD_BYTES = 1024 * 1024;
 const PAYLOAD_INITIAL_BYTES = 16 * 1024 * 1024;
 const PAYLOAD_MAX_BYTES = 256 * 1024 * 1024;
+const BYTE_FILL_VALUES = [0xAB, 0xBC, 0xCD, 0xDE] as const;
+const UINT8ARRAY_SIZE_SWEEP_BATCH = 100;
+const UINT8ARRAY_SIZE_SWEEP_MIN_BYTES = 8;
+const UINT8ARRAY_SIZE_SWEEP_MAX_BYTES = PAYLOAD_BYTES;
+const LABEL_COLUMN_WIDTH = 10;
 
 const warmupIters = (batch: number) => (batch === 1 ? WARMUP_N1 : WARMUP);
+const uint8ArraySizeSweepBytes = (() => {
+  const sizes: number[] = [];
+  for (
+    let bytes = UINT8ARRAY_SIZE_SWEEP_MIN_BYTES;
+    bytes <= UINT8ARRAY_SIZE_SWEEP_MAX_BYTES;
+    bytes *= 2
+  ) {
+    sizes.push(bytes);
+  }
+  return sizes;
+})();
 const runtimeGlobals = globalThis as typeof globalThis & {
   Bun?: { version: string };
   Deno?: { version: { deno: string } };
@@ -24,15 +40,21 @@ const fmtNs = (ns: number): string => {
   return `${ns.toFixed(2)} ns`;
 };
 
-const printHeader = (label: string): void => {
+const fmtBinaryBytes = (bytes: number): string => {
+  if (bytes >= 1024 * 1024) return `${bytes / (1024 * 1024)} MiB`;
+  if (bytes >= 1024) return `${bytes / 1024} KiB`;
+  return `${bytes} B`;
+};
+
+const printHeader = (label: string, columnLabel = "batch"): void => {
   console.log(`\n--- ${label} ---`);
   console.log(
-    `${"batch".padEnd(8)} ${"avg".padStart(12)} ${"min".padStart(12)} ${"p75".padStart(12)} ${"p99".padStart(12)} ${"max".padStart(12)}`,
+    `${columnLabel.padEnd(LABEL_COLUMN_WIDTH)} ${"avg".padStart(12)} ${"min".padStart(12)} ${"p75".padStart(12)} ${"p99".padStart(12)} ${"max".padStart(12)}`,
   );
   console.log("-".repeat(70));
 };
 
-const printStats = (n: number, samples: number[]): void => {
+const printStats = (label: string, samples: number[]): void => {
   samples.sort((a, b) => a - b);
 
   const len = samples.length;
@@ -43,8 +65,30 @@ const printStats = (n: number, samples: number[]): void => {
   const max = samples[len - 1]!;
 
   console.log(
-    `${`n=${n}`.padEnd(8)} ${fmtNs(avg).padStart(12)} ${fmtNs(min).padStart(12)} ${fmtNs(p75).padStart(12)} ${fmtNs(p99).padStart(12)} ${fmtNs(max).padStart(12)}`,
+    `${label.padEnd(LABEL_COLUMN_WIDTH)} ${fmtNs(avg).padStart(12)} ${fmtNs(min).padStart(12)} ${fmtNs(p75).padStart(12)} ${fmtNs(p99).padStart(12)} ${fmtNs(max).padStart(12)}`,
   );
+};
+
+const makeBytePayloads = (bytes: number): Uint8Array[] =>
+  BYTE_FILL_VALUES.map((fillValue) => new Uint8Array(bytes).fill(fillValue));
+
+const makeEchoBytesBatch = (
+  n: number,
+  payloads: readonly Uint8Array[],
+  echoBytes: (value: Uint8Array) => Promise<Uint8Array>,
+): (() => Promise<void>) => {
+  let turn = 0;
+
+  return async () => {
+    const jobs = new Array<Promise<Uint8Array>>(n);
+    for (let j = 0; j < n; j++) {
+      const index = (turn + j) % payloads.length;
+      jobs[j] = echoBytes(payloads[index]!);
+    }
+    const values = await Promise.all(jobs);
+    for (const value of values) sink ^= value.byteLength;
+    turn++;
+  };
 };
 
 const runtimeName = (): string => {
@@ -80,7 +124,7 @@ const runBench = async (
       if (i >= warmup) samples.push(elapsedNs);
     }
 
-    printStats(n, samples);
+    printStats(`n=${n}`, samples);
   }
 };
 
@@ -114,12 +158,7 @@ if (isMain) {
     "w".repeat(PAYLOAD_BYTES),
   ];
 
-  const bytePayloads = [
-    new Uint8Array(PAYLOAD_BYTES).fill(0xAB),
-    new Uint8Array(PAYLOAD_BYTES).fill(0xBC),
-    new Uint8Array(PAYLOAD_BYTES).fill(0xCD),
-    new Uint8Array(PAYLOAD_BYTES).fill(0xDE),
-  ];
+  const bytePayloads = makeBytePayloads(PAYLOAD_BYTES);
 
   console.log(`runtime: ${runtimeName()}`);
   console.log("task: send payload -> worker echo -> return, join_all");
@@ -152,20 +191,33 @@ if (isMain) {
       };
     });
 
-    await runBench(`knitting Uint8Array (${PAYLOAD_BYTES} bytes)`, (n) => {
-      let turn = 0;
+    await runBench(`knitting Uint8Array (${PAYLOAD_BYTES} bytes)`, (n) =>
+      makeEchoBytesBatch(n, bytePayloads, (value) => pool.call.echoBytes(value)),
+    );
 
-      return async () => {
-        const jobs = new Array<Promise<Uint8Array>>(n);
-        for (let j = 0; j < n; j++) {
-          const index = (turn + j) % bytePayloads.length;
-          jobs[j] = pool.call.echoBytes(bytePayloads[index]!);
-        }
-        const values = await Promise.all(jobs);
-        for (const value of values) sink ^= value.byteLength;
-        turn++;
-      };
-    });
+    printHeader(
+      `knitting Uint8Array size sweep (batch=${UINT8ARRAY_SIZE_SWEEP_BATCH}, ${fmtBinaryBytes(UINT8ARRAY_SIZE_SWEEP_MIN_BYTES)} -> ${fmtBinaryBytes(UINT8ARRAY_SIZE_SWEEP_MAX_BYTES)})`,
+      "size",
+    );
+
+    const sizeSweepWarmup = warmupIters(UINT8ARRAY_SIZE_SWEEP_BATCH);
+    for (const bytes of uint8ArraySizeSweepBytes) {
+      const samples: number[] = [];
+      const runBatch = makeEchoBytesBatch(
+        UINT8ARRAY_SIZE_SWEEP_BATCH,
+        makeBytePayloads(bytes),
+        (value) => pool.call.echoBytes(value),
+      );
+
+      for (let i = 0; i < ITERATIONS + sizeSweepWarmup; i++) {
+        const start = nowNs();
+        await runBatch();
+        const elapsedNs = Number(nowNs() - start);
+        if (i >= sizeSweepWarmup) samples.push(elapsedNs);
+      }
+
+      printStats(fmtBinaryBytes(bytes), samples);
+    }
   } finally {
     await pool.shutdown();
   }
