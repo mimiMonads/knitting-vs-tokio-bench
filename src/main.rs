@@ -58,16 +58,17 @@ async fn run_bench_str(label: &str, payloads: Vec<String>) {
             let mut handles = Vec::with_capacity(n);
             for j in 0..n {
                 let payload_idx = (i + j) % payloads.len();
-                let (reply_tx, reply_rx) = tokio::sync::oneshot::channel::<String>();
-                req_tx
-                    .send((payloads[payload_idx].clone(), reply_tx))
-                    .await
-                    .unwrap();
-                handles.push(reply_rx);
+                let tx = req_tx.clone();
+                let payload = payloads[payload_idx].clone();
+                handles.push(tokio::spawn(async move {
+                    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel::<String>();
+                    tx.send((payload, reply_tx)).await.unwrap();
+                    reply_rx.await.unwrap()
+                }));
             }
 
-            for reply in join_all(handles).await {
-                let _ = reply.unwrap();
+            for task in join_all(handles).await {
+                let _ = task.unwrap();
             }
 
             let elapsed = start.elapsed();
@@ -128,16 +129,17 @@ async fn run_bench_bytes(label: &str, payloads: Vec<Vec<u8>>) {
             let mut handles = Vec::with_capacity(n);
             for j in 0..n {
                 let payload_idx = (i + j) % payloads.len();
-                let (reply_tx, reply_rx) = tokio::sync::oneshot::channel::<Vec<u8>>();
-                req_tx
-                    .send((payloads[payload_idx].clone(), reply_tx))
-                    .await
-                    .unwrap();
-                handles.push(reply_rx);
+                let tx = req_tx.clone();
+                let payload = payloads[payload_idx].clone();
+                handles.push(tokio::spawn(async move {
+                    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel::<Vec<u8>>();
+                    tx.send((payload, reply_tx)).await.unwrap();
+                    reply_rx.await.unwrap()
+                }));
             }
 
-            for reply in join_all(handles).await {
-                let _ = reply.unwrap();
+            for task in join_all(handles).await {
+                let _ = task.unwrap();
             }
 
             let elapsed = start.elapsed();
@@ -191,13 +193,16 @@ async fn run_bench_f64(label: &str, payload: f64) {
 
             let mut handles = Vec::with_capacity(n);
             for _ in 0..n {
-                let (reply_tx, reply_rx) = tokio::sync::oneshot::channel::<f64>();
-                req_tx.send((payload, reply_tx)).await.unwrap();
-                handles.push(reply_rx);
+                let tx = req_tx.clone();
+                handles.push(tokio::spawn(async move {
+                    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel::<f64>();
+                    tx.send((payload, reply_tx)).await.unwrap();
+                    reply_rx.await.unwrap()
+                }));
             }
 
-            for reply in join_all(handles).await {
-                let _ = reply.unwrap();
+            for task in join_all(handles).await {
+                let _ = task.unwrap();
             }
 
             let elapsed = start.elapsed();
@@ -231,7 +236,10 @@ async fn main() {
     println!("cpu: Ryzen 9 5950X ~4.55GHz");
     println!("runtime: tokio 1.x mpsc");
     println!("task: send payload -> worker echo -> return, join_all");
-    println!("(whole-batch latency; warmup n=1: {}, others: {})", WARMUP_N1, WARMUP);
+    println!(
+        "(whole-batch latency; warmup n=1: {}, others: {})",
+        WARMUP_N1, WARMUP
+    );
     println!("(string/bytes use 4 payload variants rotated with index % 4)");
 
     run_bench_str(

@@ -1,8 +1,7 @@
-import { bench, group, run as mitataRun } from "mitata";
 import { createPool, isMain, task } from "@vixeny/knitting";
 
-
 const BATCH_SIZES = [1, 10, 100] as const;
+const ITERATIONS = 500;
 const WARMUP = 50;
 const WARMUP_N1 = 200;
 const PAYLOAD_BYTES = 1024 * 1024;
@@ -10,6 +9,80 @@ const PAYLOAD_INITIAL_BYTES = 16 * 1024 * 1024;
 const PAYLOAD_MAX_BYTES = 256 * 1024 * 1024;
 
 const warmupIters = (batch: number) => (batch === 1 ? WARMUP_N1 : WARMUP);
+const runtimeGlobals = globalThis as typeof globalThis & {
+  Bun?: { version: string };
+  Deno?: { version: { deno: string } };
+  process?: {
+    versions?: { node?: string };
+    hrtime?: { bigint?: () => bigint };
+  };
+};
+
+const fmtNs = (ns: number): string => {
+  if (ns >= 1_000_000) return `${(ns / 1_000_000).toFixed(2)} ms`;
+  if (ns >= 1_000) return `${(ns / 1_000).toFixed(2)} \u00B5s`;
+  return `${ns.toFixed(2)} ns`;
+};
+
+const printHeader = (label: string): void => {
+  console.log(`\n--- ${label} ---`);
+  console.log(
+    `${"batch".padEnd(8)} ${"avg".padStart(12)} ${"min".padStart(12)} ${"p75".padStart(12)} ${"p99".padStart(12)} ${"max".padStart(12)}`,
+  );
+  console.log("-".repeat(70));
+};
+
+const printStats = (n: number, samples: number[]): void => {
+  samples.sort((a, b) => a - b);
+
+  const len = samples.length;
+  const avg = samples.reduce((sum, sample) => sum + sample, 0) / len;
+  const min = samples[0]!;
+  const p75 = samples[Math.floor((len * 75) / 100)]!;
+  const p99 = samples[Math.floor((len * 99) / 100)]!;
+  const max = samples[len - 1]!;
+
+  console.log(
+    `${`n=${n}`.padEnd(8)} ${fmtNs(avg).padStart(12)} ${fmtNs(min).padStart(12)} ${fmtNs(p75).padStart(12)} ${fmtNs(p99).padStart(12)} ${fmtNs(max).padStart(12)}`,
+  );
+};
+
+const runtimeName = (): string => {
+  if (runtimeGlobals.Bun) return `bun ${runtimeGlobals.Bun.version}`;
+  if (runtimeGlobals.Deno) return `deno ${runtimeGlobals.Deno.version.deno}`;
+  if (runtimeGlobals.process?.versions?.node) {
+    return `node ${runtimeGlobals.process.versions.node}`;
+  }
+  return "unknown";
+};
+
+const nowNs = (): bigint => {
+  const hrtime = runtimeGlobals.process?.hrtime?.bigint;
+  if (hrtime) return hrtime();
+  return BigInt(Math.round(globalThis.performance.now() * 1_000_000));
+};
+
+const runBench = async (
+  label: string,
+  makeRunBatch: (n: number) => () => Promise<void>,
+): Promise<void> => {
+  printHeader(label);
+
+  for (const n of BATCH_SIZES) {
+    const warmup = warmupIters(n);
+    const samples: number[] = [];
+    const runBatch = makeRunBatch(n);
+
+    for (let i = 0; i < ITERATIONS + warmup; i++) {
+      const start = nowNs();
+      await runBatch();
+      const elapsedNs = Number(nowNs() - start);
+      if (i >= warmup) samples.push(elapsedNs);
+    }
+
+    printStats(n, samples);
+  }
+};
 
 export const echoString = task<string, string>({
   f: (value) => value,
@@ -24,21 +97,6 @@ export const echoF64 = task<number, number>({
 });
 
 let sink = 0;
-
-const withWarmup = (
-  n: number,
-  runBatch: () => Promise<void>,
-): (() => Promise<void>) => {
-  let warmed = false;
-  return async () => {
-    if (!warmed) {
-      const warmupCount = warmupIters(n);
-      for (let i = 0; i < warmupCount; i++) await runBatch();
-      warmed = true;
-    }
-    await runBatch();
-  };
-};
 
 if (isMain) {
   const pool = createPool({
@@ -63,10 +121,18 @@ if (isMain) {
     new Uint8Array(PAYLOAD_BYTES).fill(0xDE),
   ];
 
-  group(`knitting large string (${PAYLOAD_BYTES} bytes)`, () => {
-    for (const n of BATCH_SIZES) {
+  console.log(`runtime: ${runtimeName()}`);
+  console.log("task: send payload -> worker echo -> return, join_all");
+  console.log(
+    `(whole-batch latency; warmup n=1: ${WARMUP_N1}, others: ${WARMUP})`,
+  );
+  console.log("(string/bytes use 4 payload variants rotated with index % 4)");
+
+  try {
+    await runBench(`knitting large string (${PAYLOAD_BYTES} bytes)`, (n) => {
       let turn = 0;
-      const runBatch = async () => {
+
+      return async () => {
         const jobs = new Array<Promise<string>>(n);
         for (let j = 0; j < n; j++) {
           const index = (turn + j) % stringPayloads.length;
@@ -76,27 +142,20 @@ if (isMain) {
         for (const value of values) sink ^= value.length;
         turn++;
       };
+    });
 
-      bench(`n=${n}`, withWarmup(n, runBatch));
-    }
-  });
-
-  group("knitting number f64 (8 bytes)", () => {
-    for (const n of BATCH_SIZES) {
-      const runBatch = async () => {
+    await runBench("knitting number f64 (8 bytes)", (n) => {
+      return async () => {
         const jobs = Array.from({ length: n }, () => pool.call.echoF64(42));
         const values = await Promise.all(jobs);
         for (const value of values) sink ^= value | 0;
       };
+    });
 
-      bench(`n=${n}`, withWarmup(n, runBatch));
-    }
-  });
-
-  group(`knitting Uint8Array (${PAYLOAD_BYTES} bytes)`, () => {
-    for (const n of BATCH_SIZES) {
+    await runBench(`knitting Uint8Array (${PAYLOAD_BYTES} bytes)`, (n) => {
       let turn = 0;
-      const runBatch = async () => {
+
+      return async () => {
         const jobs = new Array<Promise<Uint8Array>>(n);
         for (let j = 0; j < n; j++) {
           const index = (turn + j) % bytePayloads.length;
@@ -106,13 +165,7 @@ if (isMain) {
         for (const value of values) sink ^= value.byteLength;
         turn++;
       };
-
-      bench(`n=${n}`, withWarmup(n, runBatch));
-    }
-  });
-
-  try {
-    await mitataRun();
+    });
   } finally {
     await pool.shutdown();
   }
