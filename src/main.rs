@@ -294,7 +294,6 @@ async fn run_bench_bytes_size_sweep() {
 
 #[tokio::main(worker_threads = 1)]
 async fn main() {
-    println!("cpu: Ryzen 9 5950X ~4.55GHz");
     println!("runtime: tokio 1.x mpsc (worker_threads = 1)");
     println!("task: send payload -> worker echo -> return, join_all");
     println!(
@@ -303,6 +302,7 @@ async fn main() {
     );
     println!("(string/bytes use 4 payload variants rotated with index % 4)");
 
+    run_bench_f64("number: f64 (8 bytes)", 42.0).await;
     run_bench_str(
         "large string: 1MB (1048576 bytes)",
         vec![
@@ -313,7 +313,6 @@ async fn main() {
         ],
     )
     .await;
-    run_bench_f64("number: f64 (8 bytes)", 42.0).await;
     run_bench_bytes(
         "Uint8Array: 1MB (1048576 bytes)",
         make_byte_payloads(PAYLOAD_BYTES),

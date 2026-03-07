@@ -160,7 +160,6 @@ if (isMain) {
 
   const bytePayloads = makeBytePayloads(PAYLOAD_BYTES);
 
-  console.log(`runtime: ${runtimeName()}`);
   console.log("task: send payload -> worker echo -> return, join_all");
   console.log(
     `(whole-batch latency; warmup n=1: ${WARMUP_N1}, others: ${WARMUP})`,
@@ -168,6 +167,15 @@ if (isMain) {
   console.log("(string/bytes use 4 payload variants rotated with index % 4)");
 
   try {
+
+    await runBench("knitting number f64 (8 bytes)", (n) => {
+      return async () => {
+        const jobs = Array.from({ length: n }, () => pool.call.echoF64(42));
+        const values = await Promise.all(jobs);
+        for (const value of values) sink ^= value | 0;
+      };
+    });
+
     await runBench(`knitting large string (${PAYLOAD_BYTES} bytes)`, (n) => {
       let turn = 0;
 
@@ -183,13 +191,6 @@ if (isMain) {
       };
     });
 
-    await runBench("knitting number f64 (8 bytes)", (n) => {
-      return async () => {
-        const jobs = Array.from({ length: n }, () => pool.call.echoF64(42));
-        const values = await Promise.all(jobs);
-        for (const value of values) sink ^= value | 0;
-      };
-    });
 
     await runBench(`knitting Uint8Array (${PAYLOAD_BYTES} bytes)`, (n) =>
       makeEchoBytesBatch(n, bytePayloads, (value) => pool.call.echoBytes(value)),

@@ -6,7 +6,7 @@
     "bench:rust": "cargo run --release --quiet"
   },
   "dependencies": {
-    "@vixeny/knitting": "npm:@jsr/vixeny__knitting@0.1.17"
+    "@vixeny/knitting": "npm:@jsr/vixeny__knitting@0.1.19"
   },
   "name": "knitting-vs-tokio-bench",
   "module": "src/main.ts",
