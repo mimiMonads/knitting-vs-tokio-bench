@@ -1,4 +1,10 @@
-use std::time::{Duration, Instant};
+use std::{
+    env,
+    fs::{create_dir_all, write},
+    io,
+    path::PathBuf,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
 
 use futures::future::join_all;
 use tokio::sync::mpsc;
@@ -13,6 +19,29 @@ const UINT8ARRAY_SIZE_SWEEP_BATCH: usize = 100;
 const UINT8ARRAY_SIZE_SWEEP_MIN_BYTES: usize = 8;
 const UINT8ARRAY_SIZE_SWEEP_MAX_BYTES: usize = PAYLOAD_BYTES;
 const LABEL_COLUMN_WIDTH: usize = 10;
+const RUNTIME_LABEL: &str = "tokio 1.x mpsc (worker_threads = 1)";
+
+#[derive(Clone, Copy)]
+struct BenchStats {
+    avg_ns: f64,
+    min_ns: f64,
+    p75_ns: f64,
+    p99_ns: f64,
+    max_ns: f64,
+}
+
+struct BenchRecord {
+    implementation: &'static str,
+    runtime: String,
+    generated_at_unix_ms: u128,
+    benchmark: String,
+    column_kind: &'static str,
+    column_value: usize,
+    column_label: String,
+    iterations: usize,
+    warmup: usize,
+    stats: BenchStats,
+}
 
 fn warmup_iters(batch: usize) -> usize {
     if batch == 1 {
@@ -57,23 +86,29 @@ fn print_header(label: &str, column_label: &str) {
     println!("{}", "-".repeat(70));
 }
 
-fn print_stats(label: &str, samples: &mut [Duration]) {
+fn summarize_samples(samples: &mut [Duration]) -> BenchStats {
     samples.sort();
     let len = samples.len();
     let avg = samples.iter().sum::<Duration>() / len as u32;
-    let min = samples[0];
-    let p75 = samples[len * 75 / 100];
-    let p99 = samples[len * 99 / 100];
-    let max = samples[len - 1];
 
+    BenchStats {
+        avg_ns: avg.as_nanos() as f64,
+        min_ns: samples[0].as_nanos() as f64,
+        p75_ns: samples[len * 75 / 100].as_nanos() as f64,
+        p99_ns: samples[len * 99 / 100].as_nanos() as f64,
+        max_ns: samples[len - 1].as_nanos() as f64,
+    }
+}
+
+fn print_stats(label: &str, stats: BenchStats) {
     println!(
         "{:<width$} {:>12} {:>12} {:>12} {:>12} {:>12}",
         label,
-        fmt_ns(avg.as_nanos() as f64),
-        fmt_ns(min.as_nanos() as f64),
-        fmt_ns(p75.as_nanos() as f64),
-        fmt_ns(p99.as_nanos() as f64),
-        fmt_ns(max.as_nanos() as f64),
+        fmt_ns(stats.avg_ns),
+        fmt_ns(stats.min_ns),
+        fmt_ns(stats.p75_ns),
+        fmt_ns(stats.p99_ns),
+        fmt_ns(stats.max_ns),
         width = LABEL_COLUMN_WIDTH,
     );
 }
@@ -95,7 +130,93 @@ fn uint8array_size_sweep_bytes() -> Vec<usize> {
     sizes
 }
 
-async fn run_bench_str(label: &str, payloads: Vec<String>) {
+fn push_record(
+    records: &mut Vec<BenchRecord>,
+    runtime: &str,
+    generated_at_unix_ms: u128,
+    benchmark: &str,
+    column_kind: &'static str,
+    column_value: usize,
+    column_label: String,
+    warmup: usize,
+    stats: BenchStats,
+) {
+    records.push(BenchRecord {
+        implementation: "tokio",
+        runtime: runtime.to_string(),
+        generated_at_unix_ms,
+        benchmark: benchmark.to_string(),
+        column_kind,
+        column_value,
+        column_label,
+        iterations: ITERATIONS,
+        warmup,
+        stats,
+    });
+}
+
+fn csv_escape(value: &str) -> String {
+    if value.contains([',', '"', '\n']) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+fn write_csv_report(records: &[BenchRecord]) -> io::Result<PathBuf> {
+    let generated_at_unix_ms = records
+        .first()
+        .map_or(0, |record| record.generated_at_unix_ms);
+    let output_path = PathBuf::from("results").join(format!("tokio-{}.csv", generated_at_unix_ms));
+
+    create_dir_all("results")?;
+
+    let mut csv = String::from(
+        "implementation,runtime,generated_at_unix_ms,benchmark,column_kind,column_value,column_label,iterations,warmup,avg_ns,min_ns,p75_ns,p99_ns,max_ns\n",
+    );
+
+    for record in records {
+        csv.push_str(
+            &[
+                csv_escape(record.implementation),
+                csv_escape(&record.runtime),
+                record.generated_at_unix_ms.to_string(),
+                csv_escape(&record.benchmark),
+                csv_escape(record.column_kind),
+                record.column_value.to_string(),
+                csv_escape(&record.column_label),
+                record.iterations.to_string(),
+                record.warmup.to_string(),
+                record.stats.avg_ns.to_string(),
+                record.stats.min_ns.to_string(),
+                record.stats.p75_ns.to_string(),
+                record.stats.p99_ns.to_string(),
+                record.stats.max_ns.to_string(),
+            ]
+            .join(","),
+        );
+        csv.push('\n');
+    }
+
+    write(&output_path, csv)?;
+
+    Ok(output_path)
+}
+
+fn unix_time_millis() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+}
+
+async fn run_bench_str(
+    label: &str,
+    payloads: Vec<String>,
+    records: &mut Vec<BenchRecord>,
+    runtime: &str,
+    generated_at_unix_ms: u128,
+) {
     assert!(
         payloads.len() == 4,
         "run_bench_str expects exactly 4 payload variants"
@@ -141,11 +262,30 @@ async fn run_bench_str(label: &str, payloads: Vec<String>) {
             }
         }
 
-        print_stats(&format!("n={}", n), &mut samples);
+        let stats = summarize_samples(&mut samples);
+        let column_label = format!("n={}", n);
+        print_stats(&column_label, stats);
+        push_record(
+            records,
+            runtime,
+            generated_at_unix_ms,
+            label,
+            "batch",
+            n,
+            column_label,
+            warmup,
+            stats,
+        );
     }
 }
 
-async fn run_bench_bytes(label: &str, payloads: Vec<Vec<u8>>) {
+async fn run_bench_bytes(
+    label: &str,
+    payloads: Vec<Vec<u8>>,
+    records: &mut Vec<BenchRecord>,
+    runtime: &str,
+    generated_at_unix_ms: u128,
+) {
     assert!(
         payloads.len() == 4,
         "run_bench_bytes expects exactly 4 payload variants"
@@ -191,11 +331,30 @@ async fn run_bench_bytes(label: &str, payloads: Vec<Vec<u8>>) {
             }
         }
 
-        print_stats(&format!("n={}", n), &mut samples);
+        let stats = summarize_samples(&mut samples);
+        let column_label = format!("n={}", n);
+        print_stats(&column_label, stats);
+        push_record(
+            records,
+            runtime,
+            generated_at_unix_ms,
+            label,
+            "batch",
+            n,
+            column_label,
+            warmup,
+            stats,
+        );
     }
 }
 
-async fn run_bench_f64(label: &str, payload: f64) {
+async fn run_bench_f64(
+    label: &str,
+    payload: f64,
+    records: &mut Vec<BenchRecord>,
+    runtime: &str,
+    generated_at_unix_ms: u128,
+) {
     print_header(label, "batch");
 
     for &n in BATCH_SIZES {
@@ -233,11 +392,33 @@ async fn run_bench_f64(label: &str, payload: f64) {
             }
         }
 
-        print_stats(&format!("n={}", n), &mut samples);
+        let stats = summarize_samples(&mut samples);
+        let column_label = format!("n={}", n);
+        print_stats(&column_label, stats);
+        push_record(
+            records,
+            runtime,
+            generated_at_unix_ms,
+            label,
+            "batch",
+            n,
+            column_label,
+            warmup,
+            stats,
+        );
     }
 }
 
-async fn run_bench_bytes_size_sweep() {
+async fn run_bench_bytes_size_sweep(
+    records: &mut Vec<BenchRecord>,
+    runtime: &str,
+    generated_at_unix_ms: u128,
+) {
+    let benchmark_label = format!(
+        "Uint8Array size sweep (batch={})",
+        UINT8ARRAY_SIZE_SWEEP_BATCH
+    );
+
     print_header(
         &format!(
             "Uint8Array size sweep (batch={}, {} -> {})",
@@ -288,13 +469,30 @@ async fn run_bench_bytes_size_sweep() {
             }
         }
 
-        print_stats(&fmt_binary_bytes(bytes), &mut samples);
+        let stats = summarize_samples(&mut samples);
+        let column_label = fmt_binary_bytes(bytes);
+        print_stats(&column_label, stats);
+        push_record(
+            records,
+            runtime,
+            generated_at_unix_ms,
+            &benchmark_label,
+            "size_bytes",
+            bytes,
+            column_label,
+            warmup,
+            stats,
+        );
     }
 }
 
 #[tokio::main(worker_threads = 1)]
-async fn main() {
-    println!("runtime: tokio 1.x mpsc (worker_threads = 1)");
+async fn main() -> io::Result<()> {
+    let write_csv = env::args().skip(1).any(|arg| arg == "--csv");
+    let generated_at_unix_ms = unix_time_millis();
+    let mut records = Vec::new();
+
+    println!("runtime: {}", RUNTIME_LABEL);
     println!("task: send payload -> worker echo -> return, join_all");
     println!(
         "(whole-batch latency; warmup n=1: {}, others: {})",
@@ -302,7 +500,14 @@ async fn main() {
     );
     println!("(string/bytes use 4 payload variants rotated with index % 4)");
 
-    run_bench_f64("number: f64 (8 bytes)", 42.0).await;
+    run_bench_f64(
+        "number: f64 (8 bytes)",
+        42.0,
+        &mut records,
+        RUNTIME_LABEL,
+        generated_at_unix_ms,
+    )
+    .await;
     run_bench_str(
         "large string: 1MB (1048576 bytes)",
         vec![
@@ -311,14 +516,27 @@ async fn main() {
             "z".repeat(PAYLOAD_BYTES),
             "w".repeat(PAYLOAD_BYTES),
         ],
+        &mut records,
+        RUNTIME_LABEL,
+        generated_at_unix_ms,
     )
     .await;
     run_bench_bytes(
         "Uint8Array: 1MB (1048576 bytes)",
         make_byte_payloads(PAYLOAD_BYTES),
+        &mut records,
+        RUNTIME_LABEL,
+        generated_at_unix_ms,
     )
     .await;
-    run_bench_bytes_size_sweep().await;
+    run_bench_bytes_size_sweep(&mut records, RUNTIME_LABEL, generated_at_unix_ms).await;
+
+    if write_csv {
+        let output_path = write_csv_report(&records)?;
+        println!("csv: {}", output_path.display());
+    }
 
     println!();
+
+    Ok(())
 }

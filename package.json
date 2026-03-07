@@ -1,12 +1,19 @@
 {
   "scripts": {
+    "bench:all": "node scripts/bench_all.mjs",
+    "bench:all:csv": "node scripts/bench_all.mjs --csv",
     "bench:bun": "bun run src/main.ts",
+    "bench:bun:csv": "bun run src/main.ts --csv",
     "bench:deno": "deno run -A src/main.ts",
+    "bench:deno:csv": "deno run -A src/main.ts --csv",
     "bench:node": "node src/main.ts",
-    "bench:rust": "cargo run --release --quiet"
+    "bench:node:csv": "node src/main.ts --csv",
+    "bench:report": "python3 graphs/report.py",
+    "bench:rust": "cargo run --release --quiet",
+    "bench:rust:csv": "cargo run --release --quiet -- --csv"
   },
   "dependencies": {
-    "@vixeny/knitting": "npm:@jsr/vixeny__knitting@0.1.19"
+    "@vixeny/knitting": "npm:@jsr/vixeny__knitting@0.1.20"
   },
   "name": "knitting-vs-tokio-bench",
   "module": "src/main.ts",

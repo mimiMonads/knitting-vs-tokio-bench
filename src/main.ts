@@ -1,3 +1,6 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
 import { createPool, isMain, task } from "@vixeny/knitting";
 
 const BATCH_SIZES = [1, 10, 100] as const;
@@ -13,6 +16,37 @@ const UINT8ARRAY_SIZE_SWEEP_MIN_BYTES = 8;
 const UINT8ARRAY_SIZE_SWEEP_MAX_BYTES = PAYLOAD_BYTES;
 const LABEL_COLUMN_WIDTH = 10;
 
+type ColumnKind = "batch" | "size_bytes";
+
+type BenchStats = {
+  avgNs: number;
+  minNs: number;
+  p75Ns: number;
+  p99Ns: number;
+  maxNs: number;
+};
+
+type BenchRecord = {
+  implementation: "knitting";
+  runtime: string;
+  generatedAtUnixMs: number;
+  benchmark: string;
+  columnKind: ColumnKind;
+  columnValue: number;
+  columnLabel: string;
+  iterations: number;
+  warmup: number;
+  avgNs: number;
+  minNs: number;
+  p75Ns: number;
+  p99Ns: number;
+  maxNs: number;
+};
+
+type CliOptions = {
+  csv: boolean;
+};
+
 const warmupIters = (batch: number) => (batch === 1 ? WARMUP_N1 : WARMUP);
 const uint8ArraySizeSweepBytes = (() => {
   const sizes: number[] = [];
@@ -27,12 +61,22 @@ const uint8ArraySizeSweepBytes = (() => {
 })();
 const runtimeGlobals = globalThis as typeof globalThis & {
   Bun?: { version: string };
-  Deno?: { version: { deno: string } };
+  Deno?: { args: string[]; version: { deno: string } };
   process?: {
+    argv?: string[];
     versions?: { node?: string };
     hrtime?: { bigint?: () => bigint };
   };
 };
+
+const cliArgs = (): string[] => {
+  if (runtimeGlobals.Deno) return runtimeGlobals.Deno.args;
+  return runtimeGlobals.process?.argv?.slice(2) ?? [];
+};
+
+const parseCliOptions = (): CliOptions => ({
+  csv: cliArgs().includes("--csv"),
+});
 
 const fmtNs = (ns: number): string => {
   if (ns >= 1_000_000) return `${(ns / 1_000_000).toFixed(2)} ms`;
@@ -54,18 +98,22 @@ const printHeader = (label: string, columnLabel = "batch"): void => {
   console.log("-".repeat(70));
 };
 
-const printStats = (label: string, samples: number[]): void => {
+const summarizeSamples = (samples: number[]): BenchStats => {
   samples.sort((a, b) => a - b);
 
   const len = samples.length;
-  const avg = samples.reduce((sum, sample) => sum + sample, 0) / len;
-  const min = samples[0]!;
-  const p75 = samples[Math.floor((len * 75) / 100)]!;
-  const p99 = samples[Math.floor((len * 99) / 100)]!;
-  const max = samples[len - 1]!;
+  return {
+    avgNs: samples.reduce((sum, sample) => sum + sample, 0) / len,
+    minNs: samples[0]!,
+    p75Ns: samples[Math.floor((len * 75) / 100)]!,
+    p99Ns: samples[Math.floor((len * 99) / 100)]!,
+    maxNs: samples[len - 1]!,
+  };
+};
 
+const printStats = (label: string, stats: BenchStats): void => {
   console.log(
-    `${label.padEnd(LABEL_COLUMN_WIDTH)} ${fmtNs(avg).padStart(12)} ${fmtNs(min).padStart(12)} ${fmtNs(p75).padStart(12)} ${fmtNs(p99).padStart(12)} ${fmtNs(max).padStart(12)}`,
+    `${label.padEnd(LABEL_COLUMN_WIDTH)} ${fmtNs(stats.avgNs).padStart(12)} ${fmtNs(stats.minNs).padStart(12)} ${fmtNs(stats.p75Ns).padStart(12)} ${fmtNs(stats.p99Ns).padStart(12)} ${fmtNs(stats.maxNs).padStart(12)}`,
   );
 };
 
@@ -100,15 +148,118 @@ const runtimeName = (): string => {
   return "unknown";
 };
 
+const runtimeId = (): string => {
+  if (runtimeGlobals.Bun) return "bun";
+  if (runtimeGlobals.Deno) return "deno";
+  if (runtimeGlobals.process?.versions?.node) return "node";
+  return "unknown";
+};
+
 const nowNs = (): bigint => {
   const hrtime = runtimeGlobals.process?.hrtime?.bigint;
   if (hrtime) return hrtime();
   return BigInt(Math.round(globalThis.performance.now() * 1_000_000));
 };
 
+const pushRecord = (
+  records: BenchRecord[],
+  runtime: string,
+  generatedAtUnixMs: number,
+  benchmark: string,
+  columnKind: ColumnKind,
+  columnValue: number,
+  columnLabel: string,
+  warmup: number,
+  stats: BenchStats,
+): void => {
+  records.push({
+    implementation: "knitting",
+    runtime,
+    generatedAtUnixMs,
+    benchmark,
+    columnKind,
+    columnValue,
+    columnLabel,
+    iterations: ITERATIONS,
+    warmup,
+    avgNs: stats.avgNs,
+    minNs: stats.minNs,
+    p75Ns: stats.p75Ns,
+    p99Ns: stats.p99Ns,
+    maxNs: stats.maxNs,
+  });
+};
+
+const csvEscape = (value: string | number): string => {
+  const stringValue = String(value);
+  if (/[",\n]/.test(stringValue)) {
+    return `"${stringValue.replaceAll('"', '""')}"`;
+  }
+  return stringValue;
+};
+
+const serializeCsv = (records: readonly BenchRecord[]): string => {
+  const header = [
+    "implementation",
+    "runtime",
+    "generated_at_unix_ms",
+    "benchmark",
+    "column_kind",
+    "column_value",
+    "column_label",
+    "iterations",
+    "warmup",
+    "avg_ns",
+    "min_ns",
+    "p75_ns",
+    "p99_ns",
+    "max_ns",
+  ].join(",");
+
+  const lines = records.map((record) =>
+    [
+      record.implementation,
+      record.runtime,
+      record.generatedAtUnixMs,
+      record.benchmark,
+      record.columnKind,
+      record.columnValue,
+      record.columnLabel,
+      record.iterations,
+      record.warmup,
+      record.avgNs,
+      record.minNs,
+      record.p75Ns,
+      record.p99Ns,
+      record.maxNs,
+    ]
+      .map(csvEscape)
+      .join(","),
+  );
+
+  return `${header}\n${lines.join("\n")}\n`;
+};
+
+const writeCsvReport = async (records: readonly BenchRecord[]): Promise<void> => {
+  if (records.length === 0) return;
+
+  await mkdir("results", { recursive: true });
+
+  const outputPath = join(
+    "results",
+    `knitting-${runtimeId()}-${records[0]!.generatedAtUnixMs}.csv`,
+  );
+
+  await writeFile(outputPath, serializeCsv(records), "utf8");
+  console.log(`csv: ${outputPath}`);
+};
+
 const runBench = async (
   label: string,
   makeRunBatch: (n: number) => () => Promise<void>,
+  records: BenchRecord[],
+  runtime: string,
+  generatedAtUnixMs: number,
 ): Promise<void> => {
   printHeader(label);
 
@@ -124,7 +275,20 @@ const runBench = async (
       if (i >= warmup) samples.push(elapsedNs);
     }
 
-    printStats(`n=${n}`, samples);
+    const stats = summarizeSamples(samples);
+    const columnLabel = `n=${n}`;
+    printStats(columnLabel, stats);
+    pushRecord(
+      records,
+      runtime,
+      generatedAtUnixMs,
+      label,
+      "batch",
+      n,
+      columnLabel,
+      warmup,
+      stats,
+    );
   }
 };
 
@@ -143,6 +307,10 @@ export const echoF64 = task<number, number>({
 let sink = 0;
 
 if (isMain) {
+  const options = parseCliOptions();
+  const runtime = runtimeName();
+  const generatedAtUnixMs = Date.now();
+  const records: BenchRecord[] = [];
   const pool = createPool({
     threads: 1,
     payload: {
@@ -160,6 +328,7 @@ if (isMain) {
 
   const bytePayloads = makeBytePayloads(PAYLOAD_BYTES);
 
+  console.log(`runtime: ${runtime}`);
   console.log("task: send payload -> worker echo -> return, join_all");
   console.log(
     `(whole-batch latency; warmup n=1: ${WARMUP_N1}, others: ${WARMUP})`,
@@ -167,33 +336,52 @@ if (isMain) {
   console.log("(string/bytes use 4 payload variants rotated with index % 4)");
 
   try {
+    await runBench(
+      "knitting number f64 (8 bytes)",
+      (n) => {
+        return async () => {
+          const jobs = Array.from({ length: n }, () => pool.call.echoF64(42));
+          const values = await Promise.all(jobs);
+          for (const value of values) sink ^= value | 0;
+        };
+      },
+      records,
+      runtime,
+      generatedAtUnixMs,
+    );
 
-    await runBench("knitting number f64 (8 bytes)", (n) => {
-      return async () => {
-        const jobs = Array.from({ length: n }, () => pool.call.echoF64(42));
-        const values = await Promise.all(jobs);
-        for (const value of values) sink ^= value | 0;
-      };
-    });
+    await runBench(
+      `knitting large string (${PAYLOAD_BYTES} bytes)`,
+      (n) => {
+        let turn = 0;
 
-    await runBench(`knitting large string (${PAYLOAD_BYTES} bytes)`, (n) => {
-      let turn = 0;
+        return async () => {
+          const jobs = new Array<Promise<string>>(n);
+          for (let j = 0; j < n; j++) {
+            const index = (turn + j) % stringPayloads.length;
+            jobs[j] = pool.call.echoString(stringPayloads[index]!);
+          }
+          const values = await Promise.all(jobs);
+          for (const value of values) sink ^= value.length;
+          turn++;
+        };
+      },
+      records,
+      runtime,
+      generatedAtUnixMs,
+    );
 
-      return async () => {
-        const jobs = new Array<Promise<string>>(n);
-        for (let j = 0; j < n; j++) {
-          const index = (turn + j) % stringPayloads.length;
-          jobs[j] = pool.call.echoString(stringPayloads[index]!);
-        }
-        const values = await Promise.all(jobs);
-        for (const value of values) sink ^= value.length;
-        turn++;
-      };
-    });
-
-
-    await runBench(`knitting Uint8Array (${PAYLOAD_BYTES} bytes)`, (n) =>
-      makeEchoBytesBatch(n, bytePayloads, (value) => pool.call.echoBytes(value)),
+    await runBench(
+      `knitting Uint8Array (${PAYLOAD_BYTES} bytes)`,
+      (n) =>
+        makeEchoBytesBatch(
+          n,
+          bytePayloads,
+          (value) => pool.call.echoBytes(value),
+        ),
+      records,
+      runtime,
+      generatedAtUnixMs,
     );
 
     printHeader(
@@ -217,10 +405,27 @@ if (isMain) {
         if (i >= sizeSweepWarmup) samples.push(elapsedNs);
       }
 
-      printStats(fmtBinaryBytes(bytes), samples);
+      const stats = summarizeSamples(samples);
+      const columnLabel = fmtBinaryBytes(bytes);
+      printStats(columnLabel, stats);
+      pushRecord(
+        records,
+        runtime,
+        generatedAtUnixMs,
+        `knitting Uint8Array size sweep (batch=${UINT8ARRAY_SIZE_SWEEP_BATCH})`,
+        "size_bytes",
+        bytes,
+        columnLabel,
+        sizeSweepWarmup,
+        stats,
+      );
     }
   } finally {
     await pool.shutdown();
+  }
+
+  if (options.csv) {
+    await writeCsvReport(records);
   }
 
   if (sink === Number.MIN_SAFE_INTEGER) {

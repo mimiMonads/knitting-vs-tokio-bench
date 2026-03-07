@@ -170,6 +170,14 @@ If you already ran `bun install` or `npm install`, Deno can also use the existin
 
 ## Run
 
+### Run every runtime
+
+```bash
+npm run bench:all
+```
+
+This runs Tokio, Bun, Deno, and Node sequentially with the normal console tables.
+
 ### Rust benchmark
 
 ```bash
@@ -218,7 +226,45 @@ Or:
 npm run bench:node
 ```
 
+### CSV output mode
+
+Add `--csv` to any benchmark command to keep the console tables and also write a timestamped CSV into `results/`.
+
+Examples:
+
+```bash
+cargo run --release --quiet -- --csv
+bun run src/main.ts --csv
+deno run -A src/main.ts --csv
+node src/main.ts --csv
+```
+
+Or use the packaged scripts:
+
+```bash
+npm run bench:all:csv
+npm run bench:rust:csv
+bun run bench:bun:csv
+npm run bench:deno:csv
+npm run bench:node:csv
+```
+
+`npm run bench:all:csv` also generates:
+
+- `results/graphs/summary.md`
+- `results/graphs/batch_avg_number_f64_log.svg`
+- `results/graphs/batch_avg_large_string_1mb_log.svg`
+- `results/graphs/batch_avg_uint8array_1mb_log.svg`
+- `results/graphs/uint8array_size_sweep_avg_log.svg`
+
+If you already have CSV files and only want to rebuild the tables / charts:
+
+```bash
+npm run bench:report
+```
+
 ## Notes
 
 - The TypeScript benchmark prints the detected runtime at startup, so the same entrypoint can be used under Bun, Deno, or Node.
 - Rust should be run in `--release` mode for any meaningful comparison.
+- The report step uses the latest CSV per runtime found in `results/`.
