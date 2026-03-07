@@ -8,7 +8,7 @@
     "bench:deno:csv": "deno run -A src/main.ts --csv",
     "bench:node": "node src/main.ts",
     "bench:node:csv": "node src/main.ts --csv",
-    "bench:report": "python3 graphs/report.py",
+    "bench:report": ".venv/bin/python graphs/report.py",
     "bench:rust": "cargo run --release --quiet",
     "bench:rust:csv": "cargo run --release --quiet -- --csv"
   },

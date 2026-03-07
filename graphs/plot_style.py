@@ -1,7 +1,4 @@
-try:
-    import matplotlib.pyplot as plt
-except ModuleNotFoundError:
-    plt = None
+import matplotlib.pyplot as plt
 
 # Gentle dark palette to avoid bright white backgrounds in saved charts.
 DARK_BG_HEX = "#0f1116"
@@ -28,9 +25,6 @@ RUNTIME_COLORS = {
 }
 
 def apply_dark_style():
-    if plt is None:
-        return False
-
     try:
         plt.style.use("dark_background")
     except Exception:

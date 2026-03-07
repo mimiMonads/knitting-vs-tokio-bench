@@ -2,24 +2,22 @@ from __future__ import annotations
 
 import argparse
 import csv
-import math
 from dataclasses import dataclass
-from html import escape
 from pathlib import Path
 from typing import Iterable
 
+import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
+
 from plot_style import (
-    AXIS_HEX,
     DARK_AXES_HEX,
     DARK_BG_HEX,
-    GRID_HEX,
-    LEGEND_BG_HEX,
-    LEGEND_EDGE_HEX,
     RUNTIME_COLORS,
     RUNTIME_LABELS,
     RUNTIME_ORDER,
     TEXT_HEX,
     TITLE_HEX,
+    apply_dark_style,
 )
 
 
@@ -35,13 +33,11 @@ SIZE_SWEEP_BENCHMARK = ("uint8array_size_sweep", "Uint8Array size sweep (batch=1
 class BenchRow:
     runtime_key: str
     runtime_label: str
-    source_file: str
     generated_at_unix_ms: int
     benchmark_key: str
     benchmark_label: str
     column_kind: str
     column_value: int
-    column_label: str
     avg_ns: float
     p99_ns: float
 
@@ -66,6 +62,11 @@ def format_binary_bytes(value: int) -> str:
     if value >= 1024:
         return f"{value // 1024} KiB"
     return f"{value} B"
+
+
+def staggered_binary_bytes(value: int, index: int) -> str:
+    label = format_binary_bytes(value)
+    return label if index % 2 == 0 else f"\n{label}"
 
 
 def short_runtime_key(row: dict[str, str]) -> str:
@@ -126,13 +127,11 @@ def load_rows(csv_paths: Iterable[Path]) -> list[BenchRow]:
                     BenchRow(
                         runtime_key=runtime_key,
                         runtime_label=RUNTIME_LABELS.get(runtime_key, runtime_key),
-                        source_file=path.name,
                         generated_at_unix_ms=int(raw["generated_at_unix_ms"]),
                         benchmark_key=benchmark_key,
                         benchmark_label=benchmark_label,
                         column_kind=raw["column_kind"],
                         column_value=int(raw["column_value"]),
-                        column_label=raw["column_label"],
                         avg_ns=float(raw["avg_ns"]),
                         p99_ns=float(raw["p99_ns"]),
                     )
@@ -163,7 +162,9 @@ def build_table(headers: list[str], rows: list[list[str]]) -> str:
 
 def batch_table(rows: list[BenchRow], runtimes: list[str], metric: str) -> str:
     lookup = {
-        (row.benchmark_key, row.column_value, row.runtime_key): row for row in rows if row.column_kind == "batch"
+        (row.benchmark_key, row.column_value, row.runtime_key): row
+        for row in rows
+        if row.column_kind == "batch"
     }
     headers = ["benchmark", "batch", *[RUNTIME_LABELS.get(runtime, runtime) for runtime in runtimes]]
     table_rows: list[list[str]] = []
@@ -185,7 +186,9 @@ def batch_table(rows: list[BenchRow], runtimes: list[str], metric: str) -> str:
 
 def ratio_table(rows: list[BenchRow], runtimes: list[str]) -> str:
     lookup = {
-        (row.benchmark_key, row.column_value, row.runtime_key): row for row in rows if row.column_kind == "batch"
+        (row.benchmark_key, row.column_value, row.runtime_key): row
+        for row in rows
+        if row.column_kind == "batch"
     }
     compare_runtimes = [runtime for runtime in runtimes if runtime != "tokio"]
     headers = ["benchmark", "batch", *[f"{RUNTIME_LABELS.get(runtime, runtime)}/tokio" for runtime in compare_runtimes]]
@@ -223,86 +226,6 @@ def sweep_table(rows: list[BenchRow], runtimes: list[str]) -> str:
     return build_table(headers, table_rows)
 
 
-def svg_line_chart(
-    width: int,
-    height: int,
-    body: list[str],
-) -> str:
-    return "\n".join(
-        [
-            f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
-            f'<rect x="0" y="0" width="{width}" height="{height}" fill="{DARK_BG_HEX}" />',
-            *body,
-            "</svg>",
-        ]
-    )
-
-
-def svg_text(x: float, y: float, text: str, fill: str = TEXT_HEX, size: int = 14, anchor: str = "start") -> str:
-    return (
-        f'<text x="{x:.2f}" y="{y:.2f}" fill="{fill}" font-size="{size}" '
-        f'font-family="IBM Plex Sans, Segoe UI, sans-serif" text-anchor="{anchor}">{escape(text)}</text>'
-    )
-
-
-def svg_line(x1: float, y1: float, x2: float, y2: float, stroke: str, width: float = 1.0, dash: str | None = None) -> str:
-    dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
-    return (
-        f'<line x1="{x1:.2f}" y1="{y1:.2f}" x2="{x2:.2f}" y2="{y2:.2f}" '
-        f'stroke="{stroke}" stroke-width="{width:.2f}"{dash_attr} />'
-    )
-
-
-def svg_rect(x: float, y: float, width: float, height: float, fill: str, stroke: str | None = None) -> str:
-    stroke_attr = f' stroke="{stroke}"' if stroke else ""
-    return (
-        f'<rect x="{x:.2f}" y="{y:.2f}" width="{width:.2f}" height="{height:.2f}" '
-        f'fill="{fill}"{stroke_attr} />'
-    )
-
-
-def svg_polyline(points: list[tuple[float, float]], stroke: str) -> str:
-    rendered = " ".join(f"{x:.2f},{y:.2f}" for x, y in points)
-    return f'<polyline points="{rendered}" fill="none" stroke="{stroke}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />'
-
-
-def svg_circle(x: float, y: float, radius: float, fill: str) -> str:
-    return f'<circle cx="{x:.2f}" cy="{y:.2f}" r="{radius:.2f}" fill="{fill}" />'
-
-
-def log_bounds(values: list[float]) -> tuple[float, float]:
-    positive = [value for value in values if value > 0]
-    minimum = min(positive)
-    maximum = max(positive)
-    lower = math.floor(math.log10(minimum))
-    upper = math.ceil(math.log10(maximum))
-    if lower == upper:
-        upper += 1
-    return lower, upper
-
-
-def log_ticks(lower: float, upper: float) -> list[float]:
-    return [10 ** exponent for exponent in range(int(lower), int(upper) + 1)]
-
-
-def scale_log(value: float, lower: float, upper: float, size: float) -> float:
-    return (math.log10(value) - lower) / (upper - lower) * size
-
-
-def write_runtime_legend(body: list[str], runtimes: list[str], x: float, y: float) -> None:
-    item_width = 100
-    box_width = len(runtimes) * item_width + 20
-    body.append(svg_rect(x - 10, y - 14, box_width, 36, LEGEND_BG_HEX, LEGEND_EDGE_HEX))
-
-    cursor = x
-    for runtime in runtimes:
-        color = RUNTIME_COLORS[runtime]
-        body.append(svg_line(cursor + 10, y, cursor + 34, y, color, 3))
-        body.append(svg_circle(cursor + 22, y, 4, color))
-        body.append(svg_text(cursor + 44, y + 5, RUNTIME_LABELS[runtime], TEXT_HEX, 14))
-        cursor += item_width
-
-
 def batch_series(
     rows: list[BenchRow],
     benchmark_key: str,
@@ -329,75 +252,61 @@ def batch_chart_filename(benchmark_key: str) -> str:
     return f"batch_avg_{benchmark_key}_log.svg"
 
 
+def configure_axes(ax: plt.Axes, runtimes: list[str], title: str, subtitle: str) -> None:
+    ax.set_facecolor(DARK_AXES_HEX)
+    ax.set_title(title, loc="left", fontsize=17, color=TITLE_HEX, pad=22)
+    ax.text(0.0, 1.03, subtitle, transform=ax.transAxes, color=TEXT_HEX, fontsize=11)
+    ax.grid(True, axis="y", which="major", linestyle="--", linewidth=0.9, alpha=0.9)
+    ax.legend(
+        loc="lower left",
+        bbox_to_anchor=(0.0, 1.08),
+        ncol=min(len(runtimes), 4),
+        frameon=True,
+        fontsize=10,
+    )
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda value, _: format_ns(value)))
+
+
 def write_batch_chart(
     benchmark_label: str,
     series: dict[str, list[BenchRow]],
     runtimes: list[str],
     output_path: Path,
 ) -> None:
-    all_values = [row.avg_ns for runtime_rows in series.values() for row in runtime_rows]
-    if not all_values:
+    if not series:
         return
 
-    width = 840
-    height = 620
-    plot_left = 138
-    plot_top = 180
-    plot_right = width - 54
-    plot_bottom = height - 118
-    plot_width = plot_right - plot_left
-    plot_height = plot_bottom - plot_top
-    batch_positions = {1: plot_left, 10: plot_left + plot_width / 2, 100: plot_right}
-
-    lower, upper = log_bounds(all_values)
-    ticks = log_ticks(lower, upper)
-    body = [
-        svg_text(70, 60, "Batch Avg Latency (less is better)", TITLE_HEX, 27),
-        svg_text(70, 92, benchmark_label, TEXT_HEX, 18),
-        svg_text(70, 118, "log-scale y axis", TEXT_HEX, 14),
-    ]
-    write_runtime_legend(body, runtimes, 70, 148)
-    body.append(
-        svg_rect(
-            plot_left - 26,
-            plot_top - 24,
-            plot_width + 52,
-            plot_height + 48,
-            DARK_AXES_HEX,
-            AXIS_HEX,
-        )
-    )
-
-    for tick in ticks:
-        y = plot_bottom - scale_log(tick, lower, upper, plot_height)
-        body.append(svg_line(plot_left, y, plot_right, y, GRID_HEX, 1, "4 6"))
-        body.append(svg_text(plot_left - 12, y + 5, format_ns(tick), TEXT_HEX, 12, "end"))
-
-    for batch, x in batch_positions.items():
-        body.append(svg_line(x, plot_bottom, x, plot_bottom + 8, AXIS_HEX, 1.5))
-        body.append(svg_text(x, plot_bottom + 28, f"n={batch}", TEXT_HEX, 12, "middle"))
-
-    body.append(svg_line(plot_left, plot_top, plot_left, plot_bottom, AXIS_HEX, 1.5))
-    body.append(svg_line(plot_left, plot_bottom, plot_right, plot_bottom, AXIS_HEX, 1.5))
+    apply_dark_style()
+    fig, ax = plt.subplots(figsize=(8.8, 6.2), constrained_layout=True)
+    fig.set_facecolor(DARK_BG_HEX)
 
     for runtime in runtimes:
         runtime_rows = series.get(runtime)
         if not runtime_rows:
             continue
+        ax.plot(
+            [row.column_value for row in runtime_rows],
+            [row.avg_ns for row in runtime_rows],
+            color=RUNTIME_COLORS[runtime],
+            marker="o",
+            linewidth=2.5,
+            markersize=6,
+            label=RUNTIME_LABELS[runtime],
+        )
 
-        points = []
-        for row in runtime_rows:
-            x = batch_positions[row.column_value]
-            y = plot_bottom - scale_log(row.avg_ns, lower, upper, plot_height)
-            points.append((x, y))
-        body.append(svg_polyline(points, RUNTIME_COLORS[runtime]))
-        for x, y in points:
-            body.append(svg_circle(x, y, 4.5, RUNTIME_COLORS[runtime]))
-
-    body.append(svg_text(plot_right - 4, plot_bottom + 66, "batch size", TEXT_HEX, 13, "end"))
-    body.append(svg_text(plot_left - 94, plot_top - 8, "avg latency", TEXT_HEX, 13))
-
-    output_path.write_text(svg_line_chart(width, height, body), encoding="utf8")
+    configure_axes(
+        ax,
+        runtimes,
+        "Batch Avg Latency (less is better)",
+        benchmark_label,
+    )
+    ax.set_yscale("log")
+    ax.set_xlabel("batch size")
+    ax.set_ylabel("avg latency")
+    ax.set_xticks([1, 10, 100], ["n=1", "n=10", "n=100"])
+    ax.tick_params(axis="x", pad=8)
+    fig.savefig(output_path, format="svg")
+    plt.close(fig)
 
 
 def write_size_sweep_chart(rows: list[BenchRow], runtimes: list[str], output_path: Path) -> None:
@@ -405,47 +314,11 @@ def write_size_sweep_chart(rows: list[BenchRow], runtimes: list[str], output_pat
     if not sweep_rows:
         return
 
-    width = 1600
-    height = 820
-    left = 132
-    top = 180
-    right = width - 60
-    bottom = height - 140
-    plot_width = right - left
-    plot_height = bottom - top
-
     sizes = sorted({row.column_value for row in sweep_rows})
-    min_size = min(sizes)
-    max_size = max(sizes)
-    all_values = [row.avg_ns for row in sweep_rows]
-    lower_y, upper_y = log_bounds(all_values)
-    ticks_y = log_ticks(lower_y, upper_y)
-    min_x = math.log2(min_size)
-    max_x = math.log2(max_size)
 
-    def scale_x(size: int) -> float:
-        return left + (math.log2(size) - min_x) / (max_x - min_x) * plot_width
-
-    body = [
-        svg_text(70, 60, "Uint8Array Size Sweep (less is better)", TITLE_HEX, 28),
-        svg_text(70, 92, "batch=100, log-scale x and y axes", TEXT_HEX, 16),
-    ]
-    write_runtime_legend(body, runtimes, 70, 132)
-    body.append(svg_rect(left - 24, top - 24, plot_width + 48, plot_height + 52, DARK_AXES_HEX, AXIS_HEX))
-
-    for tick in ticks_y:
-        y = bottom - scale_log(tick, lower_y, upper_y, plot_height)
-        body.append(svg_line(left, y, right, y, GRID_HEX, 1, "4 6"))
-        body.append(svg_text(left - 12, y + 5, format_ns(tick), TEXT_HEX, 12, "end"))
-
-    for index, size in enumerate(sizes):
-        x = scale_x(size)
-        body.append(svg_line(x, top, x, bottom, GRID_HEX, 1, "3 7"))
-        label_y = bottom + 30 if index % 2 == 0 else bottom + 48
-        body.append(svg_text(x, label_y, format_binary_bytes(size), TEXT_HEX, 11, "middle"))
-
-    body.append(svg_line(left, top, left, bottom, AXIS_HEX, 1.5))
-    body.append(svg_line(left, bottom, right, bottom, AXIS_HEX, 1.5))
+    apply_dark_style()
+    fig, ax = plt.subplots(figsize=(15.5, 8.2), constrained_layout=True)
+    fig.set_facecolor(DARK_BG_HEX)
 
     for runtime in runtimes:
         runtime_rows = sorted(
@@ -454,20 +327,31 @@ def write_size_sweep_chart(rows: list[BenchRow], runtimes: list[str], output_pat
         )
         if not runtime_rows:
             continue
+        ax.plot(
+            [row.column_value for row in runtime_rows],
+            [row.avg_ns for row in runtime_rows],
+            color=RUNTIME_COLORS[runtime],
+            marker="o",
+            linewidth=2.3,
+            markersize=4.8,
+            label=RUNTIME_LABELS[runtime],
+        )
 
-        points = []
-        for row in runtime_rows:
-            x = scale_x(row.column_value)
-            y = bottom - scale_log(row.avg_ns, lower_y, upper_y, plot_height)
-            points.append((x, y))
-        body.append(svg_polyline(points, RUNTIME_COLORS[runtime]))
-        for x, y in points:
-            body.append(svg_circle(x, y, 3.5, RUNTIME_COLORS[runtime]))
-
-    body.append(svg_text(right - 4, bottom + 92, "payload size", TEXT_HEX, 13, "end"))
-    body.append(svg_text(left - 100, top - 10, "avg latency", TEXT_HEX, 13))
-
-    output_path.write_text(svg_line_chart(width, height, body), encoding="utf8")
+    configure_axes(
+        ax,
+        runtimes,
+        "Uint8Array Size Sweep (less is better)",
+        "batch=100, log-scale x and y axes",
+    )
+    ax.set_xscale("log", base=2)
+    ax.set_yscale("log")
+    ax.set_xlabel("payload size")
+    ax.set_ylabel("avg latency")
+    ax.set_xticks(sizes, [staggered_binary_bytes(size, index) for index, size in enumerate(sizes)])
+    ax.tick_params(axis="x", labelsize=9, pad=10)
+    ax.grid(True, axis="x", which="major", linestyle=":", linewidth=0.7, alpha=0.45)
+    fig.savefig(output_path, format="svg")
+    plt.close(fig)
 
 
 def write_summary(
@@ -541,8 +425,7 @@ def main() -> int:
     sweep = sweep_table(rows, runtimes)
 
     old_batch_chart_path = out_dir / "batch_avg_log.svg"
-    if old_batch_chart_path.exists():
-        old_batch_chart_path.unlink()
+    old_batch_chart_path.unlink(missing_ok=True)
 
     batch_chart_paths: list[Path] = []
     for benchmark_key, benchmark_label in BATCH_BENCHMARKS:

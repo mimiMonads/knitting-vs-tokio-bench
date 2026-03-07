@@ -1,140 +1,78 @@
 # knitting-vs-tokio-bench
 
-This repo compares a Rust `tokio::sync::mpsc` echo path against a JavaScript/TypeScript [`@vixeny/knitting`](https://jsr.io/@vixeny/knitting) echo path.
+Benchmarks a simple "echo path" in two worlds:
 
-The point is not to claim that one abstraction is universally better than the other. The point is to measure what each design actually costs on the same simple workload, especially once payload size starts to matter.
+- Rust `tokio::sync::mpsc` (send → receive → reply)
+- JS/TS [`@vixeny/knitting`](https://jsr.io/@vixeny/knitting) (main thread → worker → return)
 
-The benchmark measures whole-batch latency for three payload shapes:
+This is not trying to crown a universal winner. It’s a small, repeatable workload meant to make the tradeoffs visible, especially once payload size starts to matter.
+
+## What this benchmark measures
+
+Whole-batch latency for three payload shapes:
 
 - `f64`
 - `String` / large UTF-8 text
 - `Uint8Array` / raw bytes
 
-Both sides use the same reporting shape:
+All runtimes use the same reporting setup:
 
-- fixed batch sizes: `1`, `10`, `100`
-- fixed warmup: `200` iterations for `n=1`, `50` otherwise
-- fixed measured iterations: `500`
+- batch sizes: `1`, `10`, `100`
+- warmup: `200` iterations for `n=1`, `50` otherwise
+- measured iterations: `500`
 - per-batch timing
-- sorted samples with `avg`, `min`, `p75`, `p99`, `max`
+- sorted samples: `avg`, `min`, `p75`, `p99`, `max`
 
-## Sample Results
+## Fairness and the one intentional asymmetry
 
-Example output from one local run on the machine hard-coded in the benchmark header (`Ryzen 9 5950X ~4.55GHz`), with Tokio pinned to `worker_threads = 1` and knitting configured with `threads: 1`:
+Two major sources of skew are already handled:
 
-```text
-$ cargo run --release --quiet
-cpu: Ryzen 9 5950X ~4.55GHz
-runtime: tokio 1.x mpsc (worker_threads = 1)
-task: send payload -> worker echo -> return, join_all
-(whole-batch latency; warmup n=1: 200, others: 50)
-(string/bytes use 4 payload variants rotated with index % 4)
+- **Dispatch shape is aligned.** Rust fans out via spawned tasks and waits with `join_all(...)`, matching knitting creating all `pool.call.*(...)` promises and awaiting `Promise.all(...)`.
+- **Runtime width is aligned.** Knitting uses `threads: 1`, and Rust uses `#[tokio::main(worker_threads = 1)]`, so sender fan-out can't spread across a bigger worker pool.
 
---- large string: 1MB (1048576 bytes) ---
-batch             avg          min          p75          p99          max
-----------------------------------------------------------------------
-n=1          74.53 µs     47.02 µs     89.33 µs    138.22 µs    672.62 µs
-n=10          2.80 ms      1.55 ms      3.16 ms      4.54 ms      5.47 ms
-n=100        62.88 ms     46.97 ms     67.06 ms     76.92 ms     94.66 ms
+One asymmetry is kept on purpose: **memory management**.
 
---- number: f64 (8 bytes) ---
-batch             avg          min          p75          p99          max
-----------------------------------------------------------------------
-n=1           8.22 µs      6.62 µs      8.03 µs     13.60 µs    150.75 µs
-n=10          9.14 µs      6.40 µs      9.27 µs     10.77 µs    112.05 µs
-n=100        43.61 µs     37.46 µs     41.47 µs    234.96 µs    299.49 µs
+### Allocation model
 
---- Uint8Array: 1MB (1048576 bytes) ---
-batch             avg          min          p75          p99          max
-----------------------------------------------------------------------
-n=1         248.63 µs     49.65 µs    214.41 µs      2.49 ms      5.51 ms
-n=10          4.96 ms      2.58 ms      5.32 ms      8.40 ms     12.07 ms
-n=100        65.84 ms     49.63 ms     70.64 ms     77.37 ms     81.08 ms
+This benchmark measures "total cost of the system as designed", not "transport cost after normalizing allocation away". Large payloads have to be copied or shared somehow, and that choice is part of the cost.
 
-$ bun run src/main.ts
-runtime: bun 1.2.20
-task: send payload -> worker echo -> return, join_all
-(whole-batch latency; warmup n=1: 200, others: 50)
-(string/bytes use 4 payload variants rotated with index % 4)
+For large string and byte payloads:
 
---- knitting large string (1048576 bytes) ---
-batch             avg          min          p75          p99          max
-----------------------------------------------------------------------
-n=1           2.17 ms    568.08 µs      2.04 ms     12.87 ms     20.88 ms
-n=10          7.87 ms      5.14 ms      8.59 ms     14.08 ms     16.69 ms
-n=100        65.61 ms     57.76 ms     67.90 ms     87.63 ms     98.38 ms
+- Rust `String` / `Vec<u8>` pays `clone()` (heap allocation + memcpy) in the timed section.
+- Knitting copies into a preallocated shared-memory region managed by its own allocator-like bookkeeping.
 
---- knitting number f64 (8 bytes) ---
-batch             avg          min          p75          p99          max
-----------------------------------------------------------------------
-n=1           4.37 µs      2.09 µs      4.21 µs     16.34 µs     69.44 µs
-n=10          9.41 µs      6.08 µs     10.31 µs     20.40 µs     66.67 µs
-n=100        49.62 µs     36.18 µs     51.70 µs     94.05 µs    175.59 µs
+Avoiding general-purpose allocation in the hot path is part of what makes knitting interesting, so the benchmark keeps that cost in-bounds rather than hiding it.
 
---- knitting Uint8Array (1048576 bytes) ---
-batch             avg          min          p75          p99          max
-----------------------------------------------------------------------
-n=1           1.38 ms    501.05 µs      1.76 ms      3.49 ms      3.85 ms
-n=10          6.47 ms      4.68 ms      7.16 ms      9.47 ms     10.19 ms
-n=100        58.98 ms     44.50 ms     61.07 ms     76.16 ms     84.59 ms
-```
+If you want to isolate pure channel / IPC overhead instead, rework the Rust side to pre-clone payloads (or share behind `Arc`) so allocation isn't in the critical section.
 
-Treat those numbers as a concrete scale reference, not a universal truth. If you run this on another CPU, memory subsystem, runtime version, or under a different system load, the absolute numbers will move.
+## A rough cost model (how to read results)
 
-## How To Read It
+For the payload-heavy echo cases, treat the benchmark as measuring two different "systems":
 
-Three of the big benchmark-shape problems have already been fixed.
+- **knitting:** shared-buffer copies + allocator-style region management (JS values still get materialized when a worker reads/returns them)
+- **tokio:** clone-driven allocation + payload copies on the channel path
 
-- Dispatch is aligned. Rust now fans requests out concurrently with spawned tasks and waits with `join_all(...)`, which matches knitting creating all `pool.call.*(...)` promises and then awaiting `Promise.all(...)`.
-- Timing is aligned. The TypeScript side no longer uses `mitata`; both implementations now use the same hand-rolled warmup, iteration, timing, and summary logic.
-- Runtime width is aligned. Knitting uses `threads: 1`, and the Rust benchmark uses `#[tokio::main(worker_threads = 1)]` so the sender fan-out cannot spread across a larger Tokio worker pool.
+The exact low-level behavior depends on payload type and runtime, but the high-level point is stable: knitting is buying speed by replacing repeated general-purpose allocation with preallocated shared-memory management.
 
-That leaves one important asymmetry, and it is intentional: memory management.
+## Why knitting can be fast (and why it's not "physics-breaking")
 
-## Allocation Model
+A few concrete things knitting does that matter for this benchmark:
 
-This benchmark is framed as "total cost of the system as designed", not "transport cost after normalizing allocation away".
+- **Fixed pool topology → simpler queues.** The pool knows its workers up front, and each host↔worker lane is effectively single‑producer/single‑consumer. That's cheaper than a fully general multi‑producer channel.
+- **Low-garbage hot path.** Most transport work happens inside typed-array-backed buffers and reused task objects, reducing allocation churn and GC pressure (and references get cleared quickly after each call settles).
+- **Two-tier payload path.** Small payloads encode inline in the per-call header slot (roughly ~0.5 KiB per in-flight call, with ~480 bytes usable for inline data); larger payloads spill into the shared payload buffer (SAB/GSAB).
+- **Shared payload buffer + mini allocator.** Large payloads are copied into a preallocated `SharedArrayBuffer` and carved into 64‑byte‑aligned regions tracked by a small slot table/bitset (more complexity, less `malloc` in the hot path).
+- **Primitives are "header-only".** Numbers/booleans/null/etc encode directly in header words (no payload buffer at all), keeping contention and copying low.
+- **Optional "gc at idle boundaries".** When workers have `gc()` available (for example via Node's `--expose-gc`), knitting may trigger a GC before going into longer spin/park waits, nudging collections away from the hot loop.
 
-So for large string and byte payloads, this difference is part of the result:
-
-- Rust `String` / `Vec<u8>` paths pay `clone()`, which means heap allocation plus memcpy in the timed section.
-- Knitting pays shared-memory copies into a preallocated region managed by its own allocator-like bookkeeping.
-
-That is not something this README is trying to hide or explain away. Avoiding `malloc` in the hot path is part of what makes knitting interesting, so the benchmark should say that plainly.
-
-If the goal changes to isolating pure channel / IPC overhead, then the benchmark should be reworked to pre-clone payloads or share them behind `Arc` on the Rust side.
-
-## What Knitting Is Buying
-
-Knitting is faster on these payload-heavy paths partly because it does more work up front in the runtime design:
-
-- pre-allocates shared memory
-- tracks sectors / regions inside that shared buffer
-- reuses that space instead of going through the general-purpose allocator on every call
-
-That is a real architectural win, but it is also real engineering complexity. In practice, it means taking on allocator-style concerns such as reuse rules, fragmentation behavior, reclamation timing, and making sure live regions are never treated as free.
-
-Tokio is taking the opposite tradeoff. The Rust path is simpler: clone the owned value, send it through the channel, and let Rust ownership plus the system allocator handle memory management. That is easier to reason about, but it also means paying allocation cost in the hot path.
-
-So the intended takeaway is not "knitting IPC is faster than tokio channels" in the abstract.
-
-It is: for this workload, knitting's architecture of pre-allocated shared memory plus custom allocator-style region management outperforms tokio's clone-through-channel approach. That framing matters because the benchmark is showing the payoff of a deliberate design trade: more memory-management complexity in exchange for lower hot-path allocation cost.
-
-## Rough Cost Model
-
-For the payload-heavy echo cases, the asymmetry should be treated as part of the story:
-
-- knitting: shared-buffer copies plus allocator-style region management, with JS values still being materialized when the worker reads or returns them
-- tokio: clone-driven allocation and payload copies on the channel path
-
-The exact low-level behavior depends on payload type and runtime, so this README keeps that part qualitative. The high-level point is stable: knitting is buying speed by replacing repeated general-purpose allocation with preallocated shared-memory management.
+None of this is free: it trades simplicity for careful memory layout, extra bookkeeping, and more "allocator-like" engineering. That trade is exactly what this repo is trying to make visible.
 
 ## Requirements
 
 - Rust stable toolchain
-- Bun `1.2+`
-- Deno `2+`
-- Node `23+` for direct `.ts` execution
+- Bun `1.2+` (for Bun runs)
+- Deno `2+` (for Deno runs)
+- Node `23+` (for Node runs, and for `npm run bench:all`)
 
 Node 23 currently prints an experimental warning because built-in type stripping is still marked experimental. The benchmark still runs.
 
@@ -146,19 +84,19 @@ Node 23 currently prints an experimental warning because built-in type stripping
 cargo build --release
 ```
 
-### Bun
+### JS deps (pick one)
 
 ```bash
 bun install
 ```
 
-### Node
+Or:
 
 ```bash
 npm install
 ```
 
-### Deno
+### Deno (optional)
 
 If you want Deno to manage the npm dependency itself:
 
@@ -168,59 +106,52 @@ deno install
 
 If you already ran `bun install` or `npm install`, Deno can also use the existing `node_modules` tree in this repo.
 
+### Plotting (optional)
+
+The report charts use `matplotlib` from a repo-local virtualenv:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install matplotlib
+```
+
 ## Run
 
-### Run every runtime
+### Quick start (bench + CSV + charts)
+
+```bash
+npm run bench:all:csv
+```
+
+This runs Tokio, Bun, Deno, and Node sequentially, writes timestamped CSVs into `results/`, and then generates the report under `results/graphs/`.
+
+### Run every runtime (console tables only)
 
 ```bash
 npm run bench:all
 ```
 
-This runs Tokio, Bun, Deno, and Node sequentially with the normal console tables.
+### Single-runtime runs
 
-### Rust benchmark
-
-```bash
-cargo run --release --quiet
-```
-
-Or:
+Rust:
 
 ```bash
 npm run bench:rust
 ```
 
-### Bun benchmark
+Bun:
 
 ```bash
 bun run src/main.ts
 ```
 
-Or:
-
-```bash
-bun run bench:bun
-```
-
-### Deno benchmark
-
-```bash
-deno run -A src/main.ts
-```
-
-Or:
+Deno:
 
 ```bash
 npm run bench:deno
 ```
 
-### Node benchmark
-
-```bash
-node src/main.ts
-```
-
-Or:
+Node:
 
 ```bash
 npm run bench:node
@@ -268,3 +199,4 @@ npm run bench:report
 - The TypeScript benchmark prints the detected runtime at startup, so the same entrypoint can be used under Bun, Deno, or Node.
 - Rust should be run in `--release` mode for any meaningful comparison.
 - The report step uses the latest CSV per runtime found in `results/`.
+- `bench:report` expects `matplotlib` to be installed in `.venv/`.

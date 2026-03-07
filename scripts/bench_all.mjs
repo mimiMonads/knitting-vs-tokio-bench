@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 
 const withCsv = process.argv.includes("--csv");
+const reportPython = existsSync(".venv/bin/python") ? ".venv/bin/python" : "python3";
 
 const steps = [
   {
@@ -55,5 +57,5 @@ for (const step of steps) {
 }
 
 if (withCsv) {
-  await runStep("report", "python3", ["graphs/report.py"]);
+  await runStep("report", reportPython, ["graphs/report.py"]);
 }
