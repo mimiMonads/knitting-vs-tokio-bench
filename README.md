@@ -14,6 +14,7 @@ Whole-batch latency for three payload shapes:
 - `f64`
 - `String` / large UTF-8 text
 - `Uint8Array` / raw bytes
+- a focused `Uint8Array` `8 B -> 512 B` sweep where Tokio swaps `Vec<u8>` cloning for `Arc<Vec<u8>>` to show the "near teleportation" upper bound
 
 All runtimes use the same reporting setup:
 
@@ -183,10 +184,12 @@ npm run bench:node:csv
 `npm run bench:all:csv` also generates:
 
 - `results/graphs/summary.md`
+- `results/graphs/results.md`
 - `results/graphs/batch_avg_number_f64_log.svg`
 - `results/graphs/batch_avg_large_string_1mb_log.svg`
 - `results/graphs/batch_avg_uint8array_1mb_log.svg`
 - `results/graphs/uint8array_size_sweep_avg_log.svg`
+- `results/graphs/uint8array_arc_compare_size_sweep_avg_log.svg`
 
 If you already have CSV files and only want to rebuild the tables / charts:
 

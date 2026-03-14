@@ -9,8 +9,10 @@ use std::{
 use futures::future::join_all;
 use tokio::sync::mpsc;
 
+mod arc_tokio;
+
 const BATCH_SIZES: &[usize] = &[1, 10, 100];
-const ITERATIONS: usize = 500;
+pub(crate) const ITERATIONS: usize = 500;
 const WARMUP: usize = 50;
 const WARMUP_N1: usize = 200;
 const PAYLOAD_BYTES: usize = 1024 * 1024;
@@ -22,7 +24,7 @@ const LABEL_COLUMN_WIDTH: usize = 10;
 const RUNTIME_LABEL: &str = "tokio 1.x mpsc (worker_threads = 1)";
 
 #[derive(Clone, Copy)]
-struct BenchStats {
+pub(crate) struct BenchStats {
     avg_ns: f64,
     min_ns: f64,
     p75_ns: f64,
@@ -30,7 +32,7 @@ struct BenchStats {
     max_ns: f64,
 }
 
-struct BenchRecord {
+pub(crate) struct BenchRecord {
     implementation: &'static str,
     runtime: String,
     generated_at_unix_ms: u128,
@@ -43,7 +45,7 @@ struct BenchRecord {
     stats: BenchStats,
 }
 
-fn warmup_iters(batch: usize) -> usize {
+pub(crate) fn warmup_iters(batch: usize) -> usize {
     if batch == 1 {
         WARMUP_N1
     } else {
@@ -61,7 +63,7 @@ fn fmt_ns(ns: f64) -> String {
     }
 }
 
-fn fmt_binary_bytes(bytes: usize) -> String {
+pub(crate) fn fmt_binary_bytes(bytes: usize) -> String {
     if bytes >= 1024 * 1024 {
         format!("{} MiB", bytes / (1024 * 1024))
     } else if bytes >= 1024 {
@@ -71,7 +73,7 @@ fn fmt_binary_bytes(bytes: usize) -> String {
     }
 }
 
-fn print_header(label: &str, column_label: &str) {
+pub(crate) fn print_header(label: &str, column_label: &str) {
     println!("\n--- {} ---", label);
     println!(
         "{:<width$} {:>12} {:>12} {:>12} {:>12} {:>12}",
@@ -86,7 +88,7 @@ fn print_header(label: &str, column_label: &str) {
     println!("{}", "-".repeat(70));
 }
 
-fn summarize_samples(samples: &mut [Duration]) -> BenchStats {
+pub(crate) fn summarize_samples(samples: &mut [Duration]) -> BenchStats {
     samples.sort();
     let len = samples.len();
     let avg = samples.iter().sum::<Duration>() / len as u32;
@@ -100,7 +102,7 @@ fn summarize_samples(samples: &mut [Duration]) -> BenchStats {
     }
 }
 
-fn print_stats(label: &str, stats: BenchStats) {
+pub(crate) fn print_stats(label: &str, stats: BenchStats) {
     println!(
         "{:<width$} {:>12} {:>12} {:>12} {:>12} {:>12}",
         label,
@@ -130,7 +132,7 @@ fn uint8array_size_sweep_bytes() -> Vec<usize> {
     sizes
 }
 
-fn push_record(
+pub(crate) fn push_record(
     records: &mut Vec<BenchRecord>,
     runtime: &str,
     generated_at_unix_ms: u128,
@@ -530,6 +532,8 @@ async fn main() -> io::Result<()> {
     )
     .await;
     run_bench_bytes_size_sweep(&mut records, RUNTIME_LABEL, generated_at_unix_ms).await;
+    arc_tokio::run_bench_arc_bytes_size_sweep(&mut records, RUNTIME_LABEL, generated_at_unix_ms)
+        .await;
 
     if write_csv {
         let output_path = write_csv_report(&records)?;

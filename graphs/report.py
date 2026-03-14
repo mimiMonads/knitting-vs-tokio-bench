@@ -27,6 +27,10 @@ BATCH_BENCHMARKS = (
     ("uint8array_1mb", "Uint8Array 1 MiB"),
 )
 SIZE_SWEEP_BENCHMARK = ("uint8array_size_sweep", "Uint8Array size sweep (batch=100)")
+ARC_COMPARE_SIZE_SWEEP_BENCHMARK = (
+    "uint8array_arc_compare_size_sweep",
+    "Uint8Array arc comparison size sweep (batch=100)",
+)
 
 
 @dataclass(frozen=True)
@@ -82,6 +86,8 @@ def short_runtime_key(row: dict[str, str]) -> str:
 
 def normalize_benchmark(name: str) -> tuple[str, str]:
     lower = name.lower()
+    if "arc comparison" in lower and "size sweep" in lower:
+        return ARC_COMPARE_SIZE_SWEEP_BENCHMARK
     if "size sweep" in lower:
         return SIZE_SWEEP_BENCHMARK
     if "number" in lower and "f64" in lower:
@@ -209,8 +215,8 @@ def ratio_table(rows: list[BenchRow], runtimes: list[str]) -> str:
     return build_table(headers, table_rows)
 
 
-def sweep_table(rows: list[BenchRow], runtimes: list[str]) -> str:
-    sweep_rows = [row for row in rows if row.benchmark_key == SIZE_SWEEP_BENCHMARK[0]]
+def sweep_table(rows: list[BenchRow], runtimes: list[str], benchmark_key: str) -> str:
+    sweep_rows = [row for row in rows if row.benchmark_key == benchmark_key]
     sizes = sorted({row.column_value for row in sweep_rows})
     lookup = {(row.column_value, row.runtime_key): row for row in sweep_rows}
     headers = ["size", *[RUNTIME_LABELS.get(runtime, runtime) for runtime in runtimes]]
@@ -221,6 +227,28 @@ def sweep_table(rows: list[BenchRow], runtimes: list[str]) -> str:
         for runtime in runtimes:
             row = lookup.get((size, runtime))
             cells.append("-" if row is None else format_ns(row.avg_ns))
+        table_rows.append(cells)
+
+    return build_table(headers, table_rows)
+
+
+def sweep_ratio_table(rows: list[BenchRow], runtimes: list[str], benchmark_key: str) -> str:
+    sweep_rows = [row for row in rows if row.benchmark_key == benchmark_key]
+    sizes = sorted({row.column_value for row in sweep_rows})
+    lookup = {(row.column_value, row.runtime_key): row for row in sweep_rows}
+    compare_runtimes = [runtime for runtime in runtimes if runtime != "tokio"]
+    headers = ["size", *[f"{RUNTIME_LABELS.get(runtime, runtime)}/tokio" for runtime in compare_runtimes]]
+    table_rows: list[list[str]] = []
+
+    for size in sizes:
+        tokio_row = lookup.get((size, "tokio"))
+        cells = [format_binary_bytes(size)]
+        for runtime in compare_runtimes:
+            runtime_row = lookup.get((size, runtime))
+            if tokio_row is None or runtime_row is None:
+                cells.append("-")
+            else:
+                cells.append(format_ratio(runtime_row.avg_ns / tokio_row.avg_ns))
         table_rows.append(cells)
 
     return build_table(headers, table_rows)
@@ -309,15 +337,24 @@ def write_batch_chart(
     plt.close(fig)
 
 
-def write_size_sweep_chart(rows: list[BenchRow], runtimes: list[str], output_path: Path) -> None:
-    sweep_rows = [row for row in rows if row.benchmark_key == SIZE_SWEEP_BENCHMARK[0]]
+def write_size_sweep_chart(
+    rows: list[BenchRow],
+    runtimes: list[str],
+    benchmark_key: str,
+    title: str,
+    subtitle: str,
+    output_path: Path,
+) -> None:
+    sweep_rows = [row for row in rows if row.benchmark_key == benchmark_key]
     if not sweep_rows:
         return
 
     sizes = sorted({row.column_value for row in sweep_rows})
 
     apply_dark_style()
-    fig, ax = plt.subplots(figsize=(15.5, 8.2), constrained_layout=True)
+    fig_width = 11.0 if len(sizes) <= 8 else 15.5
+    fig_height = 6.8 if len(sizes) <= 8 else 8.2
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height), constrained_layout=True)
     fig.set_facecolor(DARK_BG_HEX)
 
     for runtime in runtimes:
@@ -340,8 +377,8 @@ def write_size_sweep_chart(rows: list[BenchRow], runtimes: list[str], output_pat
     configure_axes(
         ax,
         runtimes,
-        "Uint8Array Size Sweep (less is better)",
-        "batch=100, log-scale x and y axes",
+        title,
+        subtitle,
     )
     ax.set_xscale("log", base=2)
     ax.set_yscale("log")
@@ -361,6 +398,8 @@ def write_summary(
     batch_p99: str,
     ratios: str,
     sweep: str,
+    arc_compare_sweep: str,
+    arc_compare_ratios: str,
 ) -> None:
     lines = ["# Benchmark Summary", "", "## Sources", ""]
     for runtime in RUNTIME_ORDER:
@@ -395,6 +434,20 @@ def write_summary(
             sweep,
             "```",
             "",
+            "## Arc Comparison Size Sweep Avg Latency (less is better)",
+            "",
+            "Tokio uses `Arc<Vec<u8>>` here as the near-teleportation reference point.",
+            "",
+            "```text",
+            arc_compare_sweep,
+            "```",
+            "",
+            "## Arc Comparison Avg Ratio Vs Tokio",
+            "",
+            "```text",
+            arc_compare_ratios,
+            "```",
+            "",
         ]
     )
     output_path.write_text("\n".join(lines), encoding="utf8")
@@ -422,7 +475,9 @@ def main() -> int:
     batch_avg = batch_table(rows, runtimes, "avg")
     batch_p99 = batch_table(rows, runtimes, "p99")
     ratios = ratio_table(rows, runtimes)
-    sweep = sweep_table(rows, runtimes)
+    sweep = sweep_table(rows, runtimes, SIZE_SWEEP_BENCHMARK[0])
+    arc_compare_sweep = sweep_table(rows, runtimes, ARC_COMPARE_SIZE_SWEEP_BENCHMARK[0])
+    arc_compare_ratios = sweep_ratio_table(rows, runtimes, ARC_COMPARE_SIZE_SWEEP_BENCHMARK[0])
 
     old_batch_chart_path = out_dir / "batch_avg_log.svg"
     old_batch_chart_path.unlink(missing_ok=True)
@@ -439,10 +494,46 @@ def main() -> int:
         batch_chart_paths.append(chart_path)
 
     sweep_chart_path = out_dir / "uint8array_size_sweep_avg_log.svg"
+    arc_compare_chart_path = out_dir / "uint8array_arc_compare_size_sweep_avg_log.svg"
     summary_path = out_dir / "summary.md"
+    results_path = out_dir / "results.md"
 
-    write_size_sweep_chart(rows, runtimes, sweep_chart_path)
-    write_summary(summary_path, latest_files, batch_avg, batch_p99, ratios, sweep)
+    write_size_sweep_chart(
+        rows,
+        runtimes,
+        SIZE_SWEEP_BENCHMARK[0],
+        "Uint8Array Size Sweep (less is better)",
+        "batch=100, log-scale x and y axes",
+        sweep_chart_path,
+    )
+    write_size_sweep_chart(
+        rows,
+        runtimes,
+        ARC_COMPARE_SIZE_SWEEP_BENCHMARK[0],
+        "Arc Comparison Size Sweep (less is better)",
+        "batch=100, tokio uses Arc<Vec<u8>>, log-scale x and y axes",
+        arc_compare_chart_path,
+    )
+    write_summary(
+        summary_path,
+        latest_files,
+        batch_avg,
+        batch_p99,
+        ratios,
+        sweep,
+        arc_compare_sweep,
+        arc_compare_ratios,
+    )
+    write_summary(
+        results_path,
+        latest_files,
+        batch_avg,
+        batch_p99,
+        ratios,
+        sweep,
+        arc_compare_sweep,
+        arc_compare_ratios,
+    )
 
     print("\n== Batch Avg Latency (less is better) ==")
     print(batch_avg)
@@ -452,10 +543,16 @@ def main() -> int:
     print(ratios)
     print("\n== Uint8Array Size Sweep Avg Latency (less is better) ==")
     print(sweep)
+    print("\n== Arc Comparison Size Sweep Avg Latency (less is better) ==")
+    print(arc_compare_sweep)
+    print("\n== Arc Comparison Avg Ratio Vs Tokio ==")
+    print(arc_compare_ratios)
     print(f"\nsummary: {summary_path.as_posix()}")
+    print(f"results: {results_path.as_posix()}")
     for chart_path in batch_chart_paths:
         print(f"chart: {chart_path.as_posix()}")
     print(f"chart: {sweep_chart_path.as_posix()}")
+    print(f"chart: {arc_compare_chart_path.as_posix()}")
 
     return 0
 

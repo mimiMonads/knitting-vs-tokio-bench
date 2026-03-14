@@ -14,6 +14,11 @@ const BYTE_FILL_VALUES = [0xAB, 0xBC, 0xCD, 0xDE] as const;
 const UINT8ARRAY_SIZE_SWEEP_BATCH = 100;
 const UINT8ARRAY_SIZE_SWEEP_MIN_BYTES = 8;
 const UINT8ARRAY_SIZE_SWEEP_MAX_BYTES = PAYLOAD_BYTES;
+const ARC_COMPARE_SIZE_SWEEP_BATCH = 100;
+const ARC_COMPARE_SIZE_SWEEP_MIN_BYTES = 8;
+const ARC_COMPARE_SIZE_SWEEP_MAX_BYTES = 512;
+const ARC_COMPARE_PAYLOAD_INITIAL_BYTES = 16 * 1024;
+const ARC_COMPARE_PAYLOAD_MAX_BYTES = 256 * 1024;
 const LABEL_COLUMN_WIDTH = 10;
 
 type ColumnKind = "batch" | "size_bytes";
@@ -48,17 +53,21 @@ type CliOptions = {
 };
 
 const warmupIters = (batch: number) => (batch === 1 ? WARMUP_N1 : WARMUP);
-const uint8ArraySizeSweepBytes = (() => {
+const powerOfTwoBytes = (minBytes: number, maxBytes: number): number[] => {
   const sizes: number[] = [];
-  for (
-    let bytes = UINT8ARRAY_SIZE_SWEEP_MIN_BYTES;
-    bytes <= UINT8ARRAY_SIZE_SWEEP_MAX_BYTES;
-    bytes *= 2
-  ) {
+  for (let bytes = minBytes; bytes <= maxBytes; bytes *= 2) {
     sizes.push(bytes);
   }
   return sizes;
-})();
+};
+const uint8ArraySizeSweepBytes = powerOfTwoBytes(
+  UINT8ARRAY_SIZE_SWEEP_MIN_BYTES,
+  UINT8ARRAY_SIZE_SWEEP_MAX_BYTES,
+);
+const arcCompareSizeSweepBytes = powerOfTwoBytes(
+  ARC_COMPARE_SIZE_SWEEP_MIN_BYTES,
+  ARC_COMPARE_SIZE_SWEEP_MAX_BYTES,
+);
 const runtimeGlobals = globalThis as typeof globalThis & {
   Bun?: { version: string };
   Deno?: { args: string[]; version: { deno: string } };
@@ -419,6 +428,55 @@ if (isMain) {
         sizeSweepWarmup,
         stats,
       );
+    }
+
+    const arcComparePool = createPool({
+      threads: 1,
+      payload: {
+        payloadInitialBytes: ARC_COMPARE_PAYLOAD_INITIAL_BYTES,
+        payloadMaxByteLength: ARC_COMPARE_PAYLOAD_MAX_BYTES,
+      },
+    })({ echoBytes });
+
+    try {
+      printHeader(
+        `Uint8Array arc comparison size sweep (batch=${ARC_COMPARE_SIZE_SWEEP_BATCH}, ${fmtBinaryBytes(ARC_COMPARE_SIZE_SWEEP_MIN_BYTES)} -> ${fmtBinaryBytes(ARC_COMPARE_SIZE_SWEEP_MAX_BYTES)})`,
+        "size",
+      );
+
+      const arcCompareWarmup = warmupIters(ARC_COMPARE_SIZE_SWEEP_BATCH);
+      for (const bytes of arcCompareSizeSweepBytes) {
+        const samples: number[] = [];
+        const runBatch = makeEchoBytesBatch(
+          ARC_COMPARE_SIZE_SWEEP_BATCH,
+          makeBytePayloads(bytes),
+          (value) => arcComparePool.call.echoBytes(value),
+        );
+
+        for (let i = 0; i < ITERATIONS + arcCompareWarmup; i++) {
+          const start = nowNs();
+          await runBatch();
+          const elapsedNs = Number(nowNs() - start);
+          if (i >= arcCompareWarmup) samples.push(elapsedNs);
+        }
+
+        const stats = summarizeSamples(samples);
+        const columnLabel = fmtBinaryBytes(bytes);
+        printStats(columnLabel, stats);
+        pushRecord(
+          records,
+          runtime,
+          generatedAtUnixMs,
+          `Uint8Array arc comparison size sweep (batch=${ARC_COMPARE_SIZE_SWEEP_BATCH})`,
+          "size_bytes",
+          bytes,
+          columnLabel,
+          arcCompareWarmup,
+          stats,
+        );
+      }
+    } finally {
+      await arcComparePool.shutdown();
     }
   } finally {
     await pool.shutdown();
