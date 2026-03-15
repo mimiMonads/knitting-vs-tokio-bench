@@ -343,6 +343,9 @@ if (isMain) {
     `(whole-batch latency; warmup n=1: ${WARMUP_N1}, others: ${WARMUP})`,
   );
   console.log("(string/bytes use 4 payload variants rotated with index % 4)");
+  console.log(
+    "(the Arc<Vec<u8>> small-size sweep is a separate Rust upper-bound reference)",
+  );
 
   try {
     await runBench(

@@ -33,6 +33,8 @@ Two major sources of skew are already handled:
 
 One asymmetry is kept on purpose: **memory management**.
 
+The small `8 B -> 512 B` "arc comparison" sweep is also reported separately on purpose. That sweep is capped at `512 B` because once Tokio switches from cloning `Vec<u8>` to sharing `Arc<Vec<u8>>`, the comparison stops being apples-to-apples with the normal byte path. Past that point, you're no longer comparing "copy bytes vs copy bytes"; you're closer to comparing copying against a shared-reference handoff, which is closer to "apples vs teleportation" than a fair transport benchmark. Read that sweep as a small-size upper-bound reference, not as the default Rust byte-path result.
+
 ### Allocation model
 
 This benchmark measures "total cost of the system as designed", not "transport cost after normalizing allocation away". Large payloads have to be copied or shared somehow, and that choice is part of the cost.

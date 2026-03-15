@@ -436,7 +436,7 @@ def write_summary(
             "",
             "## Arc Comparison Size Sweep Avg Latency (less is better)",
             "",
-            "Tokio uses `Arc<Vec<u8>>` here as the near-teleportation reference point.",
+            "Tokio uses `Arc<Vec<u8>>` here as a separate shared-bytes reference point, not the default apples-to-apples byte path.",
             "",
             "```text",
             arc_compare_sweep,
@@ -511,7 +511,7 @@ def main() -> int:
         runtimes,
         ARC_COMPARE_SIZE_SWEEP_BENCHMARK[0],
         "Arc Comparison Size Sweep (less is better)",
-        "batch=100, tokio uses Arc<Vec<u8>>, log-scale x and y axes",
+        "batch=100, tokio uses Arc<Vec<u8>> as a separate reference, log-scale x and y axes",
         arc_compare_chart_path,
     )
     write_summary(
