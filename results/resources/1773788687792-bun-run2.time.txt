@@ -1,3 +1,0 @@
-elapsed_seconds=123.96
-max_rss_kb=1662752
-voluntary_context_switches=911418

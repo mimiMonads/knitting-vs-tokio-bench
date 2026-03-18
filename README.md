@@ -134,6 +134,33 @@ This runs Tokio, Bun, Deno, and Node sequentially, writes timestamped CSVs into 
 npm run bench:all
 ```
 
+### Quick resource benchmark
+
+```bash
+npm run bench:resources:quick
+```
+
+This runs a short fixed-duration workload for Tokio, Bun, Deno, and Node under GNU `/usr/bin/time` and writes:
+
+- `results/resources/<timestamp>-summary.json`
+- `results/resources/<timestamp>-<runtime>-runN.time.txt`
+- `results/resources/<timestamp>-<runtime>-runN.log.txt`
+
+The runner builds the Rust release binary once before measurement, then times the compiled executable directly so Cargo startup work does not skew the Tokio numbers.
+
+Each measured run records:
+
+- elapsed seconds
+- CPU usage percent
+- max RSS in KiB
+- voluntary context switches
+
+To repeat each runtime more than once:
+
+```bash
+npm run bench:resources:quick -- --runs 3
+```
+
 ### Single-runtime runs
 
 Rust:

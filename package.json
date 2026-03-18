@@ -9,6 +9,7 @@
     "bench:node": "node src/main.ts",
     "bench:node:csv": "node src/main.ts --csv",
     "bench:report": ".venv/bin/python graphs/report.py",
+    "bench:resources:quick": "node scripts/bench_resources_quick.mjs",
     "bench:rust": "cargo run --release --quiet",
     "bench:rust:csv": "cargo run --release --quiet -- --csv"
   },
