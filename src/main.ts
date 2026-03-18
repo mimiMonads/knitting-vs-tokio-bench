@@ -323,8 +323,7 @@ if (isMain) {
   const pool = createPool({
     threads: 1,
     payload: {
-      payloadInitialBytes: PAYLOAD_INITIAL_BYTES,
-      payloadMaxByteLength: PAYLOAD_MAX_BYTES,
+
     },
   })({ echoString, echoBytes, echoF64 });
 
