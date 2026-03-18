@@ -1,0 +1,59 @@
+runtime: deno 2.5.6
+task: send payload -> worker echo -> return, join_all
+(whole-batch latency; warmup n=1: 200, others: 50)
+(string/bytes use 4 payload variants rotated with index % 4)
+(the Arc<Vec<u8>> small-size sweep is a separate Rust upper-bound reference)
+
+--- knitting number f64 (8 bytes) ---
+batch               avg          min          p75          p99          max
+----------------------------------------------------------------------
+n=1            18.58 µs      6.84 µs     12.27 µs    156.15 µs    757.52 µs
+n=10           26.85 µs     19.76 µs     25.29 µs    154.48 µs    516.69 µs
+n=100          63.17 µs     33.07 µs     65.82 µs    321.70 µs    923.49 µs
+
+--- knitting large string (1048576 bytes) ---
+batch               avg          min          p75          p99          max
+----------------------------------------------------------------------
+n=1             1.49 ms      1.11 ms      1.59 ms      2.86 ms      2.96 ms
+n=10           11.18 ms      8.47 ms     13.05 ms     17.28 ms     18.89 ms
+n=100          94.16 ms     79.60 ms    101.71 ms    123.33 ms    126.90 ms
+
+--- knitting Uint8Array (1048576 bytes) ---
+batch               avg          min          p75          p99          max
+----------------------------------------------------------------------
+n=1             1.15 ms    782.62 µs      1.03 ms      5.61 ms      7.46 ms
+n=10            7.35 ms      4.96 ms      7.94 ms     17.40 ms     20.52 ms
+n=100          65.65 ms     52.97 ms     69.48 ms     93.08 ms     96.58 ms
+
+--- knitting Uint8Array size sweep (batch=100, 8 B -> 1 MiB) ---
+size                avg          min          p75          p99          max
+----------------------------------------------------------------------
+8 B           112.90 µs     83.68 µs    117.07 µs    231.00 µs    310.34 µs
+16 B          100.49 µs     70.56 µs    107.33 µs    218.24 µs    399.17 µs
+32 B           80.62 µs     69.04 µs     75.29 µs    191.06 µs    683.92 µs
+64 B           80.42 µs     69.84 µs     76.98 µs    204.61 µs    552.38 µs
+128 B          85.59 µs     75.44 µs     83.47 µs    209.93 µs    507.31 µs
+256 B          94.80 µs     64.87 µs     91.44 µs    216.91 µs      5.25 ms
+512 B         102.06 µs     72.86 µs     92.57 µs    242.05 µs      4.60 ms
+1 KiB         153.13 µs    105.16 µs    137.82 µs    313.14 µs      6.10 ms
+2 KiB         255.97 µs    133.09 µs    208.71 µs      3.51 ms      4.20 ms
+4 KiB         410.46 µs    205.07 µs    360.01 µs      4.14 ms      4.44 ms
+8 KiB         462.85 µs    278.82 µs    476.76 µs      3.66 ms      4.23 ms
+16 KiB        902.26 µs    505.02 µs    824.45 µs      5.45 ms      6.96 ms
+32 KiB          1.61 ms    954.63 µs      1.42 ms      6.63 ms      8.32 ms
+64 KiB          2.80 ms      1.81 ms      2.51 ms      8.84 ms     10.68 ms
+128 KiB         6.30 ms      4.55 ms      6.80 ms     12.59 ms     13.60 ms
+256 KiB        13.05 ms     10.18 ms     14.70 ms     19.45 ms     20.72 ms
+512 KiB        29.44 ms     21.94 ms     30.74 ms     46.93 ms     59.26 ms
+1 MiB          58.41 ms     50.21 ms     60.39 ms     67.50 ms     70.86 ms
+
+--- Uint8Array arc comparison size sweep (batch=100, 8 B -> 512 B) ---
+size                avg          min          p75          p99          max
+----------------------------------------------------------------------
+8 B            97.04 µs     68.92 µs    103.77 µs    305.26 µs    471.13 µs
+16 B           75.92 µs     65.84 µs     71.78 µs    235.87 µs    795.45 µs
+32 B           71.68 µs     64.25 µs     68.47 µs    214.39 µs    664.58 µs
+64 B           70.51 µs     63.65 µs     67.64 µs    204.22 µs    264.89 µs
+128 B          72.01 µs     65.16 µs     68.89 µs    214.84 µs    252.30 µs
+256 B          92.44 µs     68.65 µs     72.58 µs    250.41 µs      6.63 ms
+512 B         111.57 µs     75.00 µs     88.58 µs    350.85 µs      5.08 ms

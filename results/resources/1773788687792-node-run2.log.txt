@@ -1,0 +1,65 @@
+(node:212) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+runtime: node 23.11.0
+task: send payload -> worker echo -> return, join_all
+(whole-batch latency; warmup n=1: 200, others: 50)
+(string/bytes use 4 payload variants rotated with index % 4)
+(the Arc<Vec<u8>> small-size sweep is a separate Rust upper-bound reference)
+
+--- knitting number f64 (8 bytes) ---
+batch               avg          min          p75          p99          max
+----------------------------------------------------------------------
+(node:212) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+n=1             7.65 µs      3.86 µs      6.14 µs     22.77 µs    682.31 µs
+n=10           18.47 µs      6.93 µs     13.13 µs    103.33 µs    948.23 µs
+n=100          53.87 µs     28.95 µs     39.34 µs    292.08 µs      3.99 ms
+
+--- knitting large string (1048576 bytes) ---
+batch               avg          min          p75          p99          max
+----------------------------------------------------------------------
+n=1             2.20 ms      1.76 ms      2.40 ms      3.59 ms      3.82 ms
+n=10           11.55 ms      9.03 ms     12.42 ms     15.94 ms     17.47 ms
+n=100          95.95 ms     80.41 ms    101.79 ms    118.52 ms    120.92 ms
+
+--- knitting Uint8Array (1048576 bytes) ---
+batch               avg          min          p75          p99          max
+----------------------------------------------------------------------
+n=1             2.01 ms    586.10 µs      2.21 ms      6.48 ms      9.89 ms
+n=10            6.23 ms      4.45 ms      6.66 ms     11.79 ms     12.64 ms
+n=100          60.27 ms     50.31 ms     63.93 ms     80.52 ms     86.80 ms
+
+--- knitting Uint8Array size sweep (batch=100, 8 B -> 1 MiB) ---
+size                avg          min          p75          p99          max
+----------------------------------------------------------------------
+8 B           141.55 µs     64.90 µs    138.88 µs    284.43 µs     11.91 ms
+16 B           75.24 µs     61.31 µs     69.90 µs    232.42 µs      1.31 ms
+32 B           70.93 µs     63.59 µs     68.02 µs    168.05 µs    362.82 µs
+64 B           73.49 µs     64.21 µs     69.60 µs    197.79 µs    446.82 µs
+128 B          79.99 µs     70.34 µs     78.74 µs    178.69 µs    328.02 µs
+256 B          87.45 µs     75.73 µs     87.23 µs    199.26 µs    435.67 µs
+512 B         106.65 µs     85.99 µs    107.16 µs    259.08 µs    996.44 µs
+1 KiB         175.80 µs    126.04 µs    197.67 µs    328.06 µs      2.85 ms
+2 KiB         243.79 µs    164.67 µs    237.69 µs    404.20 µs      4.36 ms
+4 KiB         319.46 µs    241.82 µs    344.61 µs    652.25 µs      1.55 ms
+8 KiB         508.48 µs    368.55 µs    492.31 µs      2.57 ms      3.00 ms
+16 KiB        767.60 µs    595.93 µs    774.95 µs      1.47 ms      2.18 ms
+32 KiB          1.30 ms    948.87 µs      1.32 ms      2.51 ms      2.67 ms
+64 KiB          2.30 ms      1.85 ms      2.48 ms      2.84 ms      3.45 ms
+128 KiB         4.95 ms      4.02 ms      5.39 ms      6.05 ms      6.22 ms
+256 KiB        10.90 ms      9.04 ms     11.11 ms     17.41 ms     22.36 ms
+512 KiB        24.20 ms     19.54 ms     25.27 ms     33.06 ms     35.83 ms
+1 MiB          59.82 ms     48.33 ms     63.58 ms     80.93 ms     90.35 ms
+
+--- Uint8Array arc comparison size sweep (batch=100, 8 B -> 512 B) ---
+size                avg          min          p75          p99          max
+----------------------------------------------------------------------
+(node:212) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+8 B            93.56 µs     71.65 µs     92.35 µs    333.70 µs      1.36 ms
+16 B           71.84 µs     61.31 µs     66.56 µs    303.51 µs    760.70 µs
+32 B           69.48 µs     59.15 µs     63.52 µs    312.75 µs      1.35 ms
+64 B           64.58 µs     59.31 µs     62.80 µs     86.45 µs    351.28 µs
+128 B          68.03 µs     60.65 µs     63.66 µs     96.87 µs      1.52 ms
+256 B          69.91 µs     63.54 µs     67.18 µs    298.79 µs    388.12 µs
+512 B          77.81 µs     70.52 µs     74.48 µs    266.52 µs    373.41 µs

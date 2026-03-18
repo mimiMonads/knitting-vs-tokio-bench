@@ -250,7 +250,9 @@ async fn run_bench_str(
 
         tokio::spawn(async move {
             while let Some((msg, reply_tx)) = req_rx.recv().await {
-                let _ = reply_tx.send(msg);
+                // Clone on reply so the timed round trip materializes a fresh
+                // payload in both directions, matching the TS transport more closely.
+                let _ = reply_tx.send(msg.clone());
             }
         });
 
@@ -320,7 +322,9 @@ async fn run_bench_bytes(
 
         tokio::spawn(async move {
             while let Some((msg, reply_tx)) = req_rx.recv().await {
-                let _ = reply_tx.send(msg);
+                // Clone on reply so the timed round trip materializes a fresh
+                // payload in both directions, matching the TS transport more closely.
+                let _ = reply_tx.send(msg.clone());
             }
         });
 
@@ -459,7 +463,9 @@ async fn run_bench_bytes_size_sweep(
 
         tokio::spawn(async move {
             while let Some((msg, reply_tx)) = req_rx.recv().await {
-                let _ = reply_tx.send(msg);
+                // Clone on reply so the timed round trip materializes a fresh
+                // payload in both directions, matching the TS transport more closely.
+                let _ = reply_tx.send(msg.clone());
             }
         });
 
@@ -598,6 +604,7 @@ async fn main() -> io::Result<()> {
         WARMUP_N1, WARMUP
     );
     println!("(string/bytes use 4 payload variants rotated with index % 4)");
+    println!("(Rust string/bytes clone on send and reply to mirror TS round-trip materialization)");
     println!("(the Arc<Vec<u8>> small-size sweep is a separate Rust upper-bound reference)");
 
     run_bench_f64(

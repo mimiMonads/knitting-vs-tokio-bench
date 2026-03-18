@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
+import platform
+import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -31,6 +35,13 @@ ARC_COMPARE_SIZE_SWEEP_BENCHMARK = (
     "uint8array_arc_compare_size_sweep",
     "Uint8Array arc comparison size sweep (batch=100)",
 )
+METHODOLOGY_NOTES = (
+    "The main string and byte benchmarks are intended to compare the same logical round trip on both sides: send payload, receive it in the worker, echo it back, receive it again on the caller, then wait for the whole batch.",
+    "In `src/main.ts`, the `string` and `Uint8Array` paths go through knitting transport in both directions. That transport materializes a fresh payload on receive, so the round trip includes payload work on both the request side and the reply side.",
+    "To keep the Tokio baseline fair, `src/main.rs` clones `String` and `Vec<u8>` on send and also clones again on the worker reply. The reply clone is intentional. Without it, Tokio would be measuring a cheaper return-path move while the JS runtimes were still paying for fresh payload materialization on the way back.",
+    "The `Arc<Vec<u8>>` sweep is intentionally separate and is not the default apples-to-apples byte benchmark. It exists as an upper-bound shared-bytes reference for small payloads. `Arc::clone` only bumps a refcount, so it is expected to be cheaper than copying bytes.",
+    'This means the default `string` and `Uint8Array` tables should be read as the fairer comparison, while the Arc section should be read as "how close does the normal transport get to shared ownership for small values?"',
+)
 
 
 @dataclass(frozen=True)
@@ -44,6 +55,137 @@ class BenchRow:
     column_value: int
     avg_ns: float
     p99_ns: float
+
+
+def run_text(command: list[str]) -> str | None:
+    if shutil.which(command[0]) is None:
+        return None
+
+    try:
+        completed = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+    output = completed.stdout.strip()
+    return output or None
+
+
+def parse_colon_table(text: str) -> dict[str, str]:
+    parsed: dict[str, str] = {}
+    for line in text.splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        parsed[key.strip()] = value.strip()
+    return parsed
+
+
+def format_bytes_binary(value: int) -> str:
+    gib = 1024**3
+    mib = 1024**2
+    kib = 1024
+    if value >= gib:
+        amount = value / gib
+        return f"{amount:.1f} GiB" if amount % 1 else f"{int(amount)} GiB"
+    if value >= mib:
+        amount = value / mib
+        return f"{amount:.1f} MiB" if amount % 1 else f"{int(amount)} MiB"
+    if value >= kib:
+        amount = value / kib
+        return f"{amount:.1f} KiB" if amount % 1 else f"{int(amount)} KiB"
+    return f"{value} B"
+
+
+def read_os_pretty_name() -> str | None:
+    os_release = Path("/etc/os-release")
+    if not os_release.exists():
+        return None
+
+    for line in os_release.read_text(encoding="utf8").splitlines():
+        if not line.startswith("PRETTY_NAME="):
+            continue
+        return line.split("=", 1)[1].strip().strip('"')
+
+    return None
+
+
+def read_meminfo_bytes(field: str) -> int | None:
+    meminfo = Path("/proc/meminfo")
+    if not meminfo.exists():
+        return None
+
+    for line in meminfo.read_text(encoding="utf8").splitlines():
+        if not line.startswith(field):
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            return None
+        try:
+            kib = int(parts[1])
+        except ValueError:
+            return None
+        return kib * 1024
+
+    return None
+
+
+def machine_specs() -> list[tuple[str, str]]:
+    specs: list[tuple[str, str]] = []
+
+    os_name = read_os_pretty_name()
+    if os_name is None:
+        os_name = platform.platform()
+    specs.append(("OS", os_name))
+
+    kernel = platform.release().strip()
+    if kernel:
+        specs.append(("Kernel", kernel))
+
+    architecture = platform.machine().strip()
+    if architecture:
+        specs.append(("Architecture", architecture))
+
+    lscpu_output = run_text(["lscpu"])
+    lscpu_info = parse_colon_table(lscpu_output) if lscpu_output else {}
+
+    cpu_model = lscpu_info.get("Model name") or platform.processor().strip()
+    if cpu_model:
+        specs.append(("CPU", cpu_model))
+
+    logical_cpus = lscpu_info.get("CPU(s)")
+    if logical_cpus is None:
+        count = os.cpu_count()
+        logical_cpus = str(count) if count is not None else None
+
+    sockets = lscpu_info.get("Socket(s)")
+    cores_per_socket = lscpu_info.get("Core(s) per socket")
+    threads_per_core = lscpu_info.get("Thread(s) per core")
+    topology_parts: list[str] = []
+    if logical_cpus:
+        topology_parts.append(f"{logical_cpus} logical CPUs")
+    if sockets:
+        topology_parts.append(f"{sockets} socket(s)")
+    if cores_per_socket:
+        topology_parts.append(f"{cores_per_socket} core(s)/socket")
+    if threads_per_core:
+        topology_parts.append(f"{threads_per_core} thread(s)/core")
+    if topology_parts:
+        specs.append(("Topology", ", ".join(topology_parts)))
+
+    mem_total = read_meminfo_bytes("MemTotal:")
+    if mem_total is not None:
+        specs.append(("Memory", format_bytes_binary(mem_total)))
+
+    swap_total = read_meminfo_bytes("SwapTotal:")
+    if swap_total is not None:
+        specs.append(("Swap", format_bytes_binary(swap_total)))
+
+    return specs
 
 
 def format_ns(ns: float) -> str:
@@ -394,6 +536,7 @@ def write_size_sweep_chart(
 def write_summary(
     output_path: Path,
     source_paths: dict[str, Path],
+    specs: list[tuple[str, str]],
     batch_avg: str,
     batch_p99: str,
     ratios: str,
@@ -406,6 +549,15 @@ def write_summary(
         path = source_paths.get(runtime)
         if path is not None:
             lines.append(f"- {RUNTIME_LABELS[runtime]}: `{path.as_posix()}`")
+
+    if specs:
+        lines.extend(["", "## Machine Specs", ""])
+        for label, value in specs:
+            lines.append(f"- {label}: {value}")
+
+    lines.extend(["", "## Methodology Notes", ""])
+    for note in METHODOLOGY_NOTES:
+        lines.append(f"- {note}")
 
     lines.extend(
         [
@@ -472,6 +624,7 @@ def main() -> int:
     if not runtimes:
         raise SystemExit("No supported runtime data found in CSV files.")
 
+    specs = machine_specs()
     batch_avg = batch_table(rows, runtimes, "avg")
     batch_p99 = batch_table(rows, runtimes, "p99")
     ratios = ratio_table(rows, runtimes)
@@ -517,6 +670,7 @@ def main() -> int:
     write_summary(
         summary_path,
         latest_files,
+        specs,
         batch_avg,
         batch_p99,
         ratios,
@@ -527,6 +681,7 @@ def main() -> int:
     write_summary(
         results_path,
         latest_files,
+        specs,
         batch_avg,
         batch_p99,
         ratios,

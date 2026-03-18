@@ -1,0 +1,204 @@
+{
+  "generatedAtUnixMs": 1773788687792,
+  "runs": 3,
+  "results": [
+    {
+      "runtime": "tokio",
+      "run": 1,
+      "elapsedSeconds": 62.73,
+      "maxRssKb": 110528,
+      "voluntaryContextSwitches": 481579,
+      "timePath": "results/resources/1773788687792-tokio-run1.time.txt",
+      "logPath": "results/resources/1773788687792-tokio-run1.log.txt"
+    },
+    {
+      "runtime": "tokio",
+      "run": 2,
+      "elapsedSeconds": 37.79,
+      "maxRssKb": 110888,
+      "voluntaryContextSwitches": 441402,
+      "timePath": "results/resources/1773788687792-tokio-run2.time.txt",
+      "logPath": "results/resources/1773788687792-tokio-run2.log.txt"
+    },
+    {
+      "runtime": "tokio",
+      "run": 3,
+      "elapsedSeconds": 45.53,
+      "maxRssKb": 110748,
+      "voluntaryContextSwitches": 427418,
+      "timePath": "results/resources/1773788687792-tokio-run3.time.txt",
+      "logPath": "results/resources/1773788687792-tokio-run3.log.txt"
+    },
+    {
+      "runtime": "bun",
+      "run": 1,
+      "elapsedSeconds": 120.09,
+      "maxRssKb": 1695804,
+      "voluntaryContextSwitches": 889854,
+      "timePath": "results/resources/1773788687792-bun-run1.time.txt",
+      "logPath": "results/resources/1773788687792-bun-run1.log.txt"
+    },
+    {
+      "runtime": "bun",
+      "run": 2,
+      "elapsedSeconds": 123.96,
+      "maxRssKb": 1662752,
+      "voluntaryContextSwitches": 911418,
+      "timePath": "results/resources/1773788687792-bun-run2.time.txt",
+      "logPath": "results/resources/1773788687792-bun-run2.log.txt"
+    },
+    {
+      "runtime": "bun",
+      "run": 3,
+      "elapsedSeconds": 122.07,
+      "maxRssKb": 1680360,
+      "voluntaryContextSwitches": 941047,
+      "timePath": "results/resources/1773788687792-bun-run3.time.txt",
+      "logPath": "results/resources/1773788687792-bun-run3.log.txt"
+    },
+    {
+      "runtime": "deno",
+      "run": 1,
+      "elapsedSeconds": 163.81,
+      "maxRssKb": 1032672,
+      "voluntaryContextSwitches": 257299,
+      "timePath": "results/resources/1773788687792-deno-run1.time.txt",
+      "logPath": "results/resources/1773788687792-deno-run1.log.txt"
+    },
+    {
+      "runtime": "deno",
+      "run": 2,
+      "elapsedSeconds": 168.61,
+      "maxRssKb": 1049436,
+      "voluntaryContextSwitches": 272726,
+      "timePath": "results/resources/1773788687792-deno-run2.time.txt",
+      "logPath": "results/resources/1773788687792-deno-run2.log.txt"
+    },
+    {
+      "runtime": "deno",
+      "run": 3,
+      "elapsedSeconds": 164.87,
+      "maxRssKb": 1042312,
+      "voluntaryContextSwitches": 289601,
+      "timePath": "results/resources/1773788687792-deno-run3.time.txt",
+      "logPath": "results/resources/1773788687792-deno-run3.log.txt"
+    },
+    {
+      "runtime": "node",
+      "run": 1,
+      "elapsedSeconds": 155.31,
+      "maxRssKb": 913748,
+      "voluntaryContextSwitches": 371469,
+      "timePath": "results/resources/1773788687792-node-run1.time.txt",
+      "logPath": "results/resources/1773788687792-node-run1.log.txt"
+    },
+    {
+      "runtime": "node",
+      "run": 2,
+      "elapsedSeconds": 157.72,
+      "maxRssKb": 923908,
+      "voluntaryContextSwitches": 350573,
+      "timePath": "results/resources/1773788687792-node-run2.time.txt",
+      "logPath": "results/resources/1773788687792-node-run2.log.txt"
+    },
+    {
+      "runtime": "node",
+      "run": 3,
+      "elapsedSeconds": 157.71,
+      "maxRssKb": 923620,
+      "voluntaryContextSwitches": 356676,
+      "timePath": "results/resources/1773788687792-node-run3.time.txt",
+      "logPath": "results/resources/1773788687792-node-run3.log.txt"
+    }
+  ],
+  "summary": [
+    {
+      "runtime": "tokio",
+      "runs": 3,
+      "elapsedSeconds": {
+        "min": 37.79,
+        "median": 45.53,
+        "avg": 48.68333333333333,
+        "max": 62.73
+      },
+      "maxRssKb": {
+        "min": 110528,
+        "median": 110748,
+        "avg": 110721.33333333333,
+        "max": 110888
+      },
+      "voluntaryContextSwitches": {
+        "min": 427418,
+        "median": 441402,
+        "avg": 450133,
+        "max": 481579
+      }
+    },
+    {
+      "runtime": "bun",
+      "runs": 3,
+      "elapsedSeconds": {
+        "min": 120.09,
+        "median": 122.07,
+        "avg": 122.04,
+        "max": 123.96
+      },
+      "maxRssKb": {
+        "min": 1662752,
+        "median": 1680360,
+        "avg": 1679638.6666666667,
+        "max": 1695804
+      },
+      "voluntaryContextSwitches": {
+        "min": 889854,
+        "median": 911418,
+        "avg": 914106.3333333334,
+        "max": 941047
+      }
+    },
+    {
+      "runtime": "deno",
+      "runs": 3,
+      "elapsedSeconds": {
+        "min": 163.81,
+        "median": 164.87,
+        "avg": 165.76333333333335,
+        "max": 168.61
+      },
+      "maxRssKb": {
+        "min": 1032672,
+        "median": 1042312,
+        "avg": 1041473.3333333334,
+        "max": 1049436
+      },
+      "voluntaryContextSwitches": {
+        "min": 257299,
+        "median": 272726,
+        "avg": 273208.6666666667,
+        "max": 289601
+      }
+    },
+    {
+      "runtime": "node",
+      "runs": 3,
+      "elapsedSeconds": {
+        "min": 155.31,
+        "median": 157.71,
+        "avg": 156.91333333333333,
+        "max": 157.72
+      },
+      "maxRssKb": {
+        "min": 913748,
+        "median": 923620,
+        "avg": 920425.3333333334,
+        "max": 923908
+      },
+      "voluntaryContextSwitches": {
+        "min": 350573,
+        "median": 356676,
+        "avg": 359572.6666666667,
+        "max": 371469
+      }
+    }
+  ]
+}
