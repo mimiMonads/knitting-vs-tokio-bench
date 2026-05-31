@@ -1,83 +1,110 @@
-# knitting-vs-tokio-bench
+# tokio-bench vs knitting
 
-Benchmarks a simple "echo path" in two worlds:
+measures a simple echo path in two scenarios:
+- Rust `tokio::sync::mpsc` (send -> receive -> respond)
+- JS/TS [`knitting`](https://www.npmjs.com/package/knitting) (worker -> return -> main thread)
 
-- Rust `tokio::sync::mpsc` (send → receive → reply)
-- JS/TS [`@vixeny/knitting`](https://jsr.io/@vixeny/knitting) (main thread → worker → return)
+This is not a competition to declare a winner. It is a small, repetitive task designed to show trade-offs, particularly when payload size is a factor.
 
-This is not trying to crown a universal winner. It’s a small, repeatable workload meant to make the tradeoffs visible, especially once payload size starts to matter.
+## This benchmark's measurements
 
-## What this benchmark measures
+Three payload forms and whole-batch latency:
+- `f64`: nothing to copy, just scheduling overhead
+- `Uint8Array` / raw bytes (1 MiB) – two-way copying
+- `ProcessSharedBuffer` / `Arc<Vec<u8>>` (1 MiB) — **zero-copy**: only a refcount bump (Tokio) or a fd reference (knitting) passes over the channel
 
-Whole-batch latency for three payload shapes:
+Tokio's Arc upper bound is also provided in a targeted `Uint8Array` `8 B → 512 B` sweep that matches the small-payload region.
 
-- `f64`
-- `String` / large UTF-8 text
-- `Uint8Array` / raw bytes
-- a focused `Uint8Array` `8 B -> 512 B` sweep where Tokio swaps `Vec<u8>` cloning for `Arc<Vec<u8>>` to show the "near teleportation" upper bound
+The reporting setup is identical across all runtimes:
+- Batch sizes: 1, 10, 100
+- Warmup: `200` iterations if `n=1`; otherwise `50`
+- Measured iterations: 500
+- The timing of each batch
+- Sorted samples: avg, min, p75, p99, and max
 
-All runtimes use the same reporting setup:
+## Results
 
-- batch sizes: `1`, `10`, `100`
-- warmup: `200` iterations for `n=1`, `50` otherwise
-- measured iterations: `500`
-- per-batch timing
-- sorted samples: `avg`, `min`, `p75`, `p99`, `max`
+Average whole-batch latency of one run (`tokio 1.x`, `bun 1.3.11`, `deno 2.7.4`, `node 24.15.0`). Pay attention to the *shape* of the numbers, not the exact numbers, since these are one machine on one day. To replicate, run `npm run bench:all:csv` again.
 
-## Fairness and the one intentional asymmetry
+**Pure scheduling overhead: `f64`**
 
-Two major sources of skew are already handled:
+| runtime | n=1 | n=10 | n=100 |
+| --- | --- | --- | --- |
+| tokio | 6.1 µs | 10.4 µs | 51.2 µs |
+| knitting (bun) | 8.9 µs | 17.8 µs | 78.1 µs |
+| knitting (node) | 8.2 µs | 19.7 µs | 53.7 µs |
+| knitting (deno) | 18.4 µs | 8.9 µs | 69.3 µs |
 
-- **Dispatch shape is aligned.** Rust fans out via spawned tasks and waits with `join_all(...)`, matching knitting creating all `pool.call.*(...)` promises and awaiting `Promise.all(...)`.
-- **Runtime width is aligned.** Knitting uses `threads: 1`, and Rust uses `#[tokio::main(worker_threads = 1)]`, so sender fan-out can't spread across a bigger worker pool.
+The worker round trip is in the same order of magnitude.
 
-One asymmetry is kept on purpose: **memory management**.
+**`Uint8Array` 1 MiB — complete copy in both directions**
 
-The small `8 B -> 512 B` "arc comparison" sweep is also reported separately on purpose. That sweep is capped at `512 B` because once Tokio switches from cloning `Vec<u8>` to sharing `Arc<Vec<u8>>`, the comparison stops being apples-to-apples with the normal byte path. Past that point, you're no longer comparing "copy bytes vs copy bytes"; you're closer to comparing copying against a shared-reference handoff, which is closer to "apples vs teleportation" than a fair transport benchmark. Read that sweep as a small-size upper-bound reference, not as the default Rust byte-path result.
+| runtime | n=1 | n=10 | n=100 |
+| --- | --- | --- | --- |
+| tokio | 98.9 µs | 4.31 ms | 39.4 ms |
+| knitting (bun) | 514 µs | 4.09 ms | 31.2 ms |
+| knitting (node) | 1.34 ms | 4.46 ms | 47.1 ms |
+| knitting (deno) | 750 µs | 5.78 ms | 55.0 ms |
 
-### Allocation model
+The shared-buffer copy amortises better under load than per-message `Vec` cloning, so Tokio wins the single call (no SAB encode/decode), but by `n=10` knitting/bun pulls level and is ~21% ahead at `n=100`.
 
-This benchmark measures "total cost of the system as designed", not "transport cost after normalizing allocation away". Large payloads have to be copied or shared somehow, and that choice is part of the cost.
+**Zero-copy 1 MiB – `Arc<Vec<u8>>` (tokio) vs. `ProcessSharedBuffer` (knitting)**
 
-For large string and byte payloads:
+| runtime | n=1 | n=10 | n=100 |
+| --- | --- | --- | --- |
+| tokio | 4.8 µs | 10.3 µs | 52.2 µs |
+| knitting (node) | 11.6 µs | 26.5 µs | 156 µs |
+| knitting (deno) | 23.4 µs | 44.8 µs | 226 µs |
+| knitting (bun) | 9.8 µs | 35.9 µs | 247 µs |
 
-- Rust `String` / `Vec<u8>` pays `clone()` (heap allocation + memcpy) in the timed section.
-- Knitting copies into a preallocated shared-memory region managed by its own allocator-like bookkeeping.
+Tokio's `Arc` refcount bump is the less expensive handoff (~3–4x at `n=100`), with neither side copying. Although the cost of encoding the shared-memory fd metadata through the SAB transport is more than that of a pointer move, both remain in the tens to hundreds of microseconds, which is far less than the millisecond copy path mentioned above.
 
-Avoiding general-purpose allocation in the hot path is part of what makes knitting interesting, so the benchmark keeps that cost in-bounds rather than hiding it.
+The two are equivalent for modest scheduling-bound work; on a pure zero-copy handoff, knitting's preallocated shared buffer wins under batching on the 1 MiB copy path. The least expensive option is still Tokio's `Arc`.
 
-If you want to isolate pure channel / IPC overhead instead, rework the Rust side to pre-clone payloads (or share behind `Arc`) so allocation isn't in the critical section.
+## Equity
 
-## A rough cost model (how to read results)
+Three skew sources are addressed:
 
-For the payload-heavy echo cases, treat the benchmark as measuring two different "systems":
+- **The dispatch shape is aligned.** Rust fans out via launched tasks and waits with `join_all(...)`, matching knitting producing all `pool.call.*(...)` promises and awaiting `Promise.all(...)`.
+- **Threads aligned.** Rust uses `#[tokio::main(worker_threads = 1)]`; Knitting uses `threads: 1`.
+- **Zero-copy.** `ProcessSharedBuffer` (fd reference only) vs. `Arc<Vec<u8>>` (refcount bump only). The difference is only channel and scheduling cost, since both benchmarks have 1 MiB and there is no data movement in any direction.
 
-- **knitting:** shared-buffer copies + allocator-style region management (JS values still get materialized when a worker reads/returns them)
-- **tokio:** clone-driven allocation + payload copies on the channel path
+Copy path memory management is a deliberate imbalance.
 
-The exact low-level behavior depends on payload type and runtime, but the high-level point is stable: knitting is buying speed by replacing repeated general-purpose allocation with preallocated shared-memory management.
+In the timed part, the Rust `Vec<u8>` benchmark rewards `clone()` (heap allocation + memcpy). Knitting copies into a preallocated `SharedArrayBuffer` with accounting similar to that of an allocator. Since knitting involves avoiding general-purpose allocation in the hot path, the benchmark keeps this difference in-bounds rather than concealing it.
 
-## Why knitting can be fast (and why it's not "physics-breaking")
+### The little arc sweep (8 B → 512 B)
 
-A few concrete things knitting does that matter for this benchmark:
+This sweep is kept apart and capped at `512 B`. After that, it is no longer an apples-to-apples transport comparison because you are comparing copying against a shared-reference handoff. Instead of reading it as the default byte-path result, read it as a small-size scheduling lower-bound for Rust. The dedicated `Arc<Vec<u8>>` vs. `ProcessSharedBuffer` bench is the honest 1 MiB zero-copy comparison.
 
-- **Fixed pool topology → simpler queues.** The pool knows its workers up front, and each host↔worker lane is effectively single‑producer/single‑consumer. That's cheaper than a fully general multi‑producer channel.
-- **Low-garbage hot path.** Most transport work happens inside typed-array-backed buffers and reused task objects, reducing allocation churn and GC pressure (and references get cleared quickly after each call settles).
-- **Two-tier payload path.** Small payloads encode inline in the per-call header slot (roughly ~0.5 KiB per in-flight call, with ~480 bytes usable for inline data); larger payloads spill into the shared payload buffer (SAB/GSAB).
-- **Shared payload buffer + mini allocator.** Large payloads are copied into a preallocated `SharedArrayBuffer` and carved into 64‑byte‑aligned regions tracked by a small slot table/bitset (more complexity, less `malloc` in the hot path).
-- **Primitives are "header-only".** Numbers/booleans/null/etc encode directly in header words (no payload buffer at all), keeping contention and copying low.
-- **Optional "gc at idle boundaries".** When workers have `gc()` available (for example via Node's `--expose-gc`), knitting may trigger a GC before going into longer spin/park waits, nudging collections away from the hot loop.
+## A crude cost model (how to understand results)
 
-None of this is free: it trades simplicity for careful memory layout, extra bookkeeping, and more "allocator-like" engineering. That trade is exactly what this repo is trying to make visible.
+Consider the benchmark as assessing two distinct "systems" for the payload-heavy echo cases:
+
+- **Knitting:** Allocator-style area management combined with shared-buffer copies (JS values still materialise when a worker reads or returns them).
+- **Tokio:** Clone-driven allocation plus payload copies on the channel path.
+
+The high-level point is stable: knitting purchases speed by substituting preallocated shared-memory management for recurrent general-purpose allocation.
+
+## Why knitting can be quick
+
+For this benchmark, knitting matters in a few specific ways:
+
+- **Simpler queues due to fixed pool structure.** Each host-worker lane is essentially single-producer/single-consumer, and the pool is aware of its employees up front. Compared to a completely general multi-producer channel, that is less expensive.
+- The majority of transport work takes place inside reused task objects and buffers backed by typed arrays, which lowers GC burden and allocation churn.
+- **The idle policy is spin-then-park, with GC incorporated into the dead time.** When a worker runs out of work, it first initiates a GC pass, busy-spins with `Atomics.pause` for a budget of `spinMicroseconds`, and only parks on `Atomics.wait` once that budget has passed (see `worker/timers.ts`). The spin budget allows a rapidly coming next call to be picked up mid-spin, avoiding the futex wakeup cost that otherwise dominates single-call delay, and collecting *while idle* keeps GC pauses out of the active task route (steadier tails).
+- Larger payloads overflow into the shared payload buffer (SAB/GSAB), while smaller payloads encode inline in the per-call header slot (~480 bytes useable).
+- Large payloads are copied into a preallocated `SharedArrayBuffer` divided into 64-byte-aligned chunks that are tracked by a tiny slot table/bitset.
+- **Primitives are "header-only".** There is no payload buffer at all; numbers, booleans, null, etc. are encoded directly in header words. Knitting can transmit an OS-level shared-memory fd reference across the channel for substantial data that persists beyond a single call. **`ProcessSharedBuffer` is completely zero-copy.** The backing memory is never copied; only the fd metadata (~40 bytes) passes across the transport.
+
+All of this is not free; it sacrifices simplicity in favour of more "allocator-like" engineering and meticulous memory layout. This repository is specifically attempting to make that deal visible.
 
 ## Requirements
 
 - Rust stable toolchain
-- Bun `1.2+` (for Bun runs)
-- Deno `2+` (for Deno runs)
-- Node `23+` (for Node runs, and for `npm run bench:all`)
-
-Node 23 currently prints an experimental warning because built-in type stripping is still marked experimental. The benchmark still runs.
+- Bun `1+`
+- Deno `2+`
+- Node `22+`
 
 ## Install
 
@@ -87,13 +114,7 @@ Node 23 currently prints an experimental warning because built-in type stripping
 cargo build --release
 ```
 
-### JS deps (pick one)
-
-```bash
-bun install
-```
-
-Or:
+### JS deps
 
 ```bash
 npm install
@@ -101,17 +122,11 @@ npm install
 
 ### Deno (optional)
 
-If you want Deno to manage the npm dependency itself:
-
 ```bash
 deno install
 ```
 
-If you already ran `bun install` or `npm install`, Deno can also use the existing `node_modules` tree in this repo.
-
 ### Plotting (optional)
-
-The report charts use `matplotlib` from a repo-local virtualenv:
 
 ```bash
 python3 -m venv .venv
@@ -126,9 +141,9 @@ python3 -m venv .venv
 npm run bench:all:csv
 ```
 
-This runs Tokio, Bun, Deno, and Node sequentially, writes timestamped CSVs into `results/`, and then generates the report under `results/graphs/`.
+Runs Tokio, Bun, Deno, and Node sequentially, writes timestamped CSVs into `results/`, and generates charts under `results/graphs/`.
 
-### Run every runtime (console tables only)
+### All runtimes (console tables only)
 
 ```bash
 npm run bench:all
@@ -140,58 +155,20 @@ npm run bench:all
 npm run bench:resources:quick
 ```
 
-This runs a short fixed-duration workload for Tokio, Bun, Deno, and Node under GNU `/usr/bin/time` and writes:
-
-- `results/resources/<timestamp>-summary.json`
-- `results/resources/<timestamp>-<runtime>-runN.time.txt`
-- `results/resources/<timestamp>-<runtime>-runN.log.txt`
-
-The runner builds the Rust release binary once before measurement, then times the compiled executable directly so Cargo startup work does not skew the Tokio numbers.
-
-Each measured run records:
-
-- elapsed seconds
-- CPU usage percent
-- max RSS in KiB
-- voluntary context switches
-
-To repeat each runtime more than once:
-
-```bash
-npm run bench:resources:quick -- --runs 3
-```
+Runs a short fixed-duration workload under GNU `/usr/bin/time` and records elapsed seconds, CPU%, max RSS, and voluntary context switches for each runtime.
 
 ### Single-runtime runs
 
-Rust:
-
 ```bash
-npm run bench:rust
+npm run bench:rust          # Tokio
+bun run src/main.ts         # Bun
+npm run bench:deno          # Deno
+npm run bench:node          # Node
 ```
 
-Bun:
+### CSV output
 
-```bash
-bun run src/main.ts
-```
-
-Deno:
-
-```bash
-npm run bench:deno
-```
-
-Node:
-
-```bash
-npm run bench:node
-```
-
-### CSV output mode
-
-Add `--csv` to any benchmark command to keep the console tables and also write a timestamped CSV into `results/`.
-
-Examples:
+Add `--csv` to any run to write a timestamped file into `results/`:
 
 ```bash
 cargo run --release --quiet -- --csv
@@ -203,24 +180,13 @@ node src/main.ts --csv
 Or use the packaged scripts:
 
 ```bash
-npm run bench:all:csv
 npm run bench:rust:csv
-bun run bench:bun:csv
+npm run bench:bun:csv
 npm run bench:deno:csv
 npm run bench:node:csv
 ```
 
-`npm run bench:all:csv` also generates:
-
-- `results/graphs/summary.md`
-- `results/graphs/results.md`
-- `results/graphs/batch_avg_number_f64_log.svg`
-- `results/graphs/batch_avg_large_string_1mb_log.svg`
-- `results/graphs/batch_avg_uint8array_1mb_log.svg`
-- `results/graphs/uint8array_size_sweep_avg_log.svg`
-- `results/graphs/uint8array_arc_compare_size_sweep_avg_log.svg`
-
-If you already have CSV files and only want to rebuild the tables / charts:
+If you already have CSVs and only want to rebuild charts:
 
 ```bash
 npm run bench:report
@@ -228,7 +194,6 @@ npm run bench:report
 
 ## Notes
 
-- The TypeScript benchmark prints the detected runtime at startup, so the same entrypoint can be used under Bun, Deno, or Node.
-- Rust should be run in `--release` mode for any meaningful comparison.
-- The report step uses the latest CSV per runtime found in `results/`.
-- `bench:report` expects `matplotlib` to be installed in `.venv/`.
+- The TypeScript entrypoint detects the runtime at startup, so the same file runs under Bun, Deno, and Node.
+- Always run Rust in `--release` mode for any meaningful comparison.
+- The report step uses the latest CSV per runtime found in `results/` and expects `matplotlib` in `.venv/`.

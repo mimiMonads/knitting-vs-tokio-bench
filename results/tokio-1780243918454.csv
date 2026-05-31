@@ -1,0 +1,35 @@
+implementation,runtime,generated_at_unix_ms,benchmark,column_kind,column_value,column_label,iterations,warmup,avg_ns,min_ns,p75_ns,p99_ns,max_ns
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,number: f64 (8 bytes),batch,1,n=1,500,200,6051,2774,6091,13972,37501
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,number: f64 (8 bytes),batch,10,n=10,500,50,10356,7704,10723,14795,27655
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,number: f64 (8 bytes),batch,100,n=100,500,50,51210,44997,52957,79531,85951
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array: 1MB (1048576 bytes),batch,1,n=1,500,200,98869,91959,101385,116752,143180
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array: 1MB (1048576 bytes),batch,10,n=10,500,50,4310399,3861502,4462660,5077020,5491186
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array: 1MB (1048576 bytes),batch,100,n=100,500,50,39378264,36353626,40456012,45482708,47306011
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Arc<Vec<u8>>: 1MB (1048576 bytes),batch,1,n=1,500,200,4807,4372,4890,6558,8701
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Arc<Vec<u8>>: 1MB (1048576 bytes),batch,10,n=10,500,50,10346,8771,10661,15068,50971
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Arc<Vec<u8>>: 1MB (1048576 bytes),batch,100,n=100,500,50,52162,45802,53778,61806,64409
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array size sweep (batch=100),size_bytes,8,8 B,500,50,67696,60329,69569,86363,210841
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array size sweep (batch=100),size_bytes,16,16 B,500,50,63897,57634,64102,102359,109987
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array size sweep (batch=100),size_bytes,32,32 B,500,50,69963,61151,72802,96429,99584
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array size sweep (batch=100),size_bytes,64,64 B,500,50,65712,57640,68023,82854,88004
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array size sweep (batch=100),size_bytes,128,128 B,500,50,71048,62308,73058,87444,109448
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array size sweep (batch=100),size_bytes,256,256 B,500,50,72424,61565,76356,88596,97919
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array size sweep (batch=100),size_bytes,512,512 B,500,50,65001,59234,65184,78706,213104
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array size sweep (batch=100),size_bytes,1024,1 KiB,500,50,70413,64231,72145,87727,90375
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array size sweep (batch=100),size_bytes,2048,2 KiB,500,50,134898,116091,139803,171599,183524
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array size sweep (batch=100),size_bytes,4096,4 KiB,500,50,133976,119903,136361,151896,438813
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array size sweep (batch=100),size_bytes,8192,8 KiB,500,50,159145,134648,168176,220792,306387
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array size sweep (batch=100),size_bytes,16384,16 KiB,500,50,183529,169780,187552,202406,281922
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array size sweep (batch=100),size_bytes,32768,32 KiB,500,50,1036082,849248,1069350,1397654,1426743
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array size sweep (batch=100),size_bytes,65536,64 KiB,500,50,2085387,1412910,2183899,2564716,2649415
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array size sweep (batch=100),size_bytes,131072,128 KiB,500,50,4390297,3684208,4515351,5288418,5757728
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array size sweep (batch=100),size_bytes,262144,256 KiB,500,50,9307905,7918905,9566027,10602154,10836108
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array size sweep (batch=100),size_bytes,524288,512 KiB,500,50,18628537,16445063,18939888,21540395,23458915
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array size sweep (batch=100),size_bytes,1048576,1 MiB,500,50,38735809,35845412,39360894,44771933,44973420
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array arc comparison size sweep (batch=100),size_bytes,8,8 B,500,50,55171,48563,56928,74740,83971
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array arc comparison size sweep (batch=100),size_bytes,16,16 B,500,50,56883,50023,58040,83776,96279
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array arc comparison size sweep (batch=100),size_bytes,32,32 B,500,50,55802,49773,57347,69121,76619
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array arc comparison size sweep (batch=100),size_bytes,64,64 B,500,50,58488,51971,58687,124659,137966
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array arc comparison size sweep (batch=100),size_bytes,128,128 B,500,50,56556,49726,58177,64966,162978
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array arc comparison size sweep (batch=100),size_bytes,256,256 B,500,50,59064,51668,61769,70204,77133
+tokio,tokio 1.x mpsc (worker_threads = 1),1780243918454,Uint8Array arc comparison size sweep (batch=100),size_bytes,512,512 B,500,50,66845,53422,68692,107651,111688

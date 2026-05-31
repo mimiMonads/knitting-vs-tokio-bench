@@ -1,9 +1,10 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "dependencies": {
-        "@vixeny/knitting": "npm:@jsr/vixeny__knitting@0.1.17",
+        "@vixeny/knitting": "npm:@jsr/vixeny__knitting@0.1.37",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -18,7 +19,7 @@
 
     "@types/node": ["@types/node@25.3.5", "", { "dependencies": { "undici-types": "~7.18.0" } }, "sha512-oX8xrhvpiyRCQkG1MFchB09f+cXftgIXb3a7UUa4Y3wpmZPw5tyZGTLWhlESOLq1Rq6oDlc8npVU2/9xiCuXMA=="],
 
-    "@vixeny/knitting": ["@jsr/vixeny__knitting@0.1.17", "https://npm.jsr.io/~/11/@jsr/vixeny__knitting/0.1.17.tgz", {}, "sha512-uXUY4NmhZqxM6uIjC2XDQNxqb+mzRemd8mXkCTgON2NDEFfpnC9pHd2p6s3ch1fmnG1JeFS1jmRoBBGbgcw9fw=="],
+    "@vixeny/knitting": ["@jsr/vixeny__knitting@0.1.37", "https://npm.jsr.io/~/11/@jsr/vixeny__knitting/0.1.37.tgz", {}, "sha512-EPiTwbioUuz+ihwLmLngGS3iOcP7zPZLm1VDJpjiyMAQHtzHbYvx7dZ82AGvwt1ljscEzd18iy/Iz85kXRfIqw=="],
 
     "bun-types": ["bun-types@1.3.10", "", { "dependencies": { "@types/node": "*" } }, "sha512-tcpfCCl6XWo6nCVnpcVrxQ+9AYN1iqMIzgrSKYMB/fjLtV2eyAVEg7AxQJuCq/26R6HpKWykQXuSOq/21RYcbg=="],
 
