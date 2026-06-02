@@ -24,16 +24,16 @@ The reporting setup is identical across all runtimes:
 
 ## Results
 
-Average whole-batch latency of one run (`tokio 1.x`, `bun 1.3.11`, `deno 2.7.4`, `node 24.15.0`). Pay attention to the *shape* of the numbers, not the exact numbers, since these are one machine on one day. To replicate, run `npm run bench:all:csv` again.
+Average whole-batch latency of one run (`knitting 0.1.51`, `tokio 1.x`, `bun 1.3.11`, `deno 2.7.4`, `node 24.15.0`). Pay attention to the *shape* of the numbers, not the exact numbers, since these are one machine on one day. To replicate, run `npm run bench:all:csv` again.
 
 **Pure scheduling overhead: `f64`**
 
 | runtime | n=1 | n=10 | n=100 |
 | --- | --- | --- | --- |
-| tokio | 6.1 µs | 10.4 µs | 51.2 µs |
-| knitting (bun) | 8.9 µs | 17.8 µs | 78.1 µs |
-| knitting (node) | 8.2 µs | 19.7 µs | 53.7 µs |
-| knitting (deno) | 18.4 µs | 8.9 µs | 69.3 µs |
+| tokio | 4.6 µs | 9.6 µs | 52.8 µs |
+| knitting (bun) | 8.8 µs | 14.9 µs | 69.6 µs |
+| knitting (node) | 9.1 µs | 16.2 µs | 53.8 µs |
+| knitting (deno) | 12.8 µs | 15.4 µs | 57.1 µs |
 
 The worker round trip is in the same order of magnitude.
 
@@ -41,23 +41,23 @@ The worker round trip is in the same order of magnitude.
 
 | runtime | n=1 | n=10 | n=100 |
 | --- | --- | --- | --- |
-| tokio | 98.9 µs | 4.31 ms | 39.4 ms |
-| knitting (bun) | 514 µs | 4.09 ms | 31.2 ms |
-| knitting (node) | 1.34 ms | 4.46 ms | 47.1 ms |
-| knitting (deno) | 750 µs | 5.78 ms | 55.0 ms |
+| tokio | 105 µs | 4.29 ms | 37.7 ms |
+| knitting (bun) | 550 µs | 4.14 ms | 31.3 ms |
+| knitting (node) | 1.33 ms | 4.59 ms | 47.6 ms |
+| knitting (deno) | 657 µs | 6.00 ms | 55.2 ms |
 
-The shared-buffer copy amortises better under load than per-message `Vec` cloning, so Tokio wins the single call (no SAB encode/decode), but by `n=10` knitting/bun pulls level and is ~21% ahead at `n=100`.
+The shared-buffer copy amortises better under load than per-message `Vec` cloning, so Tokio wins the single call (no SAB encode/decode), but by `n=10` knitting/bun pulls level and is ~17% ahead at `n=100`.
 
 **Zero-copy 1 MiB – `Arc<Vec<u8>>` (tokio) vs. `ProcessSharedBuffer` (knitting)**
 
 | runtime | n=1 | n=10 | n=100 |
 | --- | --- | --- | --- |
-| tokio | 4.8 µs | 10.3 µs | 52.2 µs |
-| knitting (node) | 11.6 µs | 26.5 µs | 156 µs |
-| knitting (deno) | 23.4 µs | 44.8 µs | 226 µs |
-| knitting (bun) | 9.8 µs | 35.9 µs | 247 µs |
+| tokio | 4.6 µs | 10.2 µs | 68.9 µs |
+| knitting (node) | 20.4 µs | 20.5 µs | 81.6 µs |
+| knitting (deno) | 20.7 µs | 20.4 µs | 108 µs |
+| knitting (bun) | 9.0 µs | 29.1 µs | 130 µs |
 
-Tokio's `Arc` refcount bump is the less expensive handoff (~3–4x at `n=100`), with neither side copying. Although the cost of encoding the shared-memory fd metadata through the SAB transport is more than that of a pointer move, both remain in the tens to hundreds of microseconds, which is far less than the millisecond copy path mentioned above.
+Tokio's `Arc` refcount bump is still the least expensive handoff, with neither side copying — but the margin narrowed sharply in knitting `0.1.51`. At `n=100`, Tokio (~69 µs) is only ~1.2x ahead of knitting/node (~82 µs) and ~1.9x ahead of knitting/bun (~130 µs), versus the ~3–4x seen in earlier knitting releases. Although encoding the shared-memory fd metadata through the SAB transport still costs more than a pointer move, both remain in the tens to hundreds of microseconds, which is far less than the millisecond copy path mentioned above.
 
 The two are equivalent for modest scheduling-bound work; on a pure zero-copy handoff, knitting's preallocated shared buffer wins under batching on the 1 MiB copy path. The least expensive option is still Tokio's `Arc`.
 

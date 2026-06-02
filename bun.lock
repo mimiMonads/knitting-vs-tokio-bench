@@ -5,6 +5,7 @@
     "": {
       "dependencies": {
         "@vixeny/knitting": "npm:@jsr/vixeny__knitting@0.1.37",
+        "knitting": "^0.1.51",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -22,6 +23,8 @@
     "@vixeny/knitting": ["@jsr/vixeny__knitting@0.1.37", "https://npm.jsr.io/~/11/@jsr/vixeny__knitting/0.1.37.tgz", {}, "sha512-EPiTwbioUuz+ihwLmLngGS3iOcP7zPZLm1VDJpjiyMAQHtzHbYvx7dZ82AGvwt1ljscEzd18iy/Iz85kXRfIqw=="],
 
     "bun-types": ["bun-types@1.3.10", "", { "dependencies": { "@types/node": "*" } }, "sha512-tcpfCCl6XWo6nCVnpcVrxQ+9AYN1iqMIzgrSKYMB/fjLtV2eyAVEg7AxQJuCq/26R6HpKWykQXuSOq/21RYcbg=="],
+
+    "knitting": ["knitting@0.1.51", "", { "peerDependencies": { "typescript": "^5.2.0" } }, "sha512-AodH6ZXnEcucQ4H0MZuTE4TLUlISfYsoV9u8Ba7IdM9eEAElkpE+feFx9OIGcaDkDC78YagwowseBC2ElBZr5A=="],
 
     "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 

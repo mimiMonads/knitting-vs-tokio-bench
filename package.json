@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@vixeny/knitting": "npm:@jsr/vixeny__knitting@0.1.37",
-    "knitting": "^0.1.50"
+    "knitting": "^0.1.51"
   },
   "name": "knitting-vs-tokio-bench",
   "module": "src/main.ts",

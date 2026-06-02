@@ -58,6 +58,10 @@ if (isMain) {
     echoProcessSharedBuffer,
   });
 
+  // Give the worker threads a moment to spawn and settle before we start
+  // timing, so the first batches don't pay startup cost.
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
   const bytePayloads = makeBytePayloads(PAYLOAD_BYTES);
   const psbPayloads = makePsbPayloads(PAYLOAD_BYTES);
   const uint8ArraySweepSizes = powerOfTwoBytes(UINT8ARRAY_SIZE_SWEEP_MIN_BYTES, UINT8ARRAY_SIZE_SWEEP_MAX_BYTES);

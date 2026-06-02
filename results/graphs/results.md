@@ -2,19 +2,19 @@
 
 ## Sources
 
-- tokio: `results/tokio-1773827721825.csv`
-- bun: `results/knitting-bun-1773827812276.csv`
-- node: `results/knitting-node-1773828074699.csv`
-- deno: `results/knitting-deno-1773827925019.csv`
+- tokio: `results/tokio-1780359436688.csv`
+- bun: `results/knitting-bun-1780359504852.csv`
+- node: `results/knitting-node-1780359653274.csv`
+- deno: `results/knitting-deno-1780359560428.csv`
 
 ## Machine Specs
 
-- OS: Ubuntu 23.10
-- Kernel: 6.5.0-44-generic
+- OS: Ubuntu 24.04.4 LTS
+- Kernel: 6.17.0-29-generic
 - Architecture: x86_64
-- CPU: AMD Ryzen 7 4700U with Radeon Graphics
-- Topology: 8 logical CPUs, 1 socket(s), 8 core(s)/socket, 1 thread(s)/core
-- Memory: 15.1 GiB
+- CPU: 11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz
+- Topology: 8 logical CPUs, 1 socket(s), 4 core(s)/socket, 2 thread(s)/core
+- Memory: 15.4 GiB
 - Swap: 4.0 GiB
 
 ## Methodology Notes
@@ -28,33 +28,33 @@
 ## Batch Avg Latency (less is better)
 
 ```text
-benchmark            | batch | tokio     | bun      | node     | deno    
----------------------+-------+-----------+----------+----------+---------
-number f64 (8 bytes) | n=1   | 13.01 us  | 7.35 us  | 6.63 us  | 21.54 us
-number f64 (8 bytes) | n=10  | 27.50 us  | 13.41 us | 17.28 us | 11.97 us
-number f64 (8 bytes) | n=100 | 89.55 us  | 80.61 us | 62.33 us | 63.28 us
-large string 1 MiB   | n=1   | 221.35 us | 1.19 ms  | 2.85 ms  | 1.38 ms 
-large string 1 MiB   | n=10  | 6.20 ms   | 6.01 ms  | 10.79 ms | 10.38 ms
-large string 1 MiB   | n=100 | 37.93 ms  | 50.16 ms | 84.66 ms | 83.90 ms
-Uint8Array 1 MiB     | n=1   | 272.81 us | 1.30 ms  | 2.35 ms  | 1.14 ms 
-Uint8Array 1 MiB     | n=10  | 4.64 ms   | 5.27 ms  | 5.22 ms  | 6.36 ms 
-Uint8Array 1 MiB     | n=100 | 37.83 ms  | 47.76 ms | 54.95 ms | 60.04 ms
+benchmark            | batch | tokio     | bun       | node     | deno     
+---------------------+-------+-----------+-----------+----------+----------
+number f64 (8 bytes) | n=1   | 4.57 us   | -         | -        | -        
+number f64 (8 bytes) | n=10  | 9.60 us   | -         | -        | -        
+number f64 (8 bytes) | n=100 | 52.84 us  | -         | -        | -        
+large string 1 MiB   | n=1   | -         | -         | -        | -        
+large string 1 MiB   | n=10  | -         | -         | -        | -        
+large string 1 MiB   | n=100 | -         | -         | -        | -        
+Uint8Array 1 MiB     | n=1   | 105.50 us | 550.03 us | 1.33 ms  | 657.28 us
+Uint8Array 1 MiB     | n=10  | 4.29 ms   | 4.14 ms   | 4.59 ms  | 6.00 ms  
+Uint8Array 1 MiB     | n=100 | 37.72 ms  | 31.28 ms  | 47.63 ms | 55.18 ms 
 ```
 
 ## Batch P99 Latency (less is better)
 
 ```text
-benchmark            | batch | tokio     | bun      | node      | deno     
----------------------+-------+-----------+----------+-----------+----------
-number f64 (8 bytes) | n=1   | 16.85 us  | 18.70 us | 26.25 us  | 160.57 us
-number f64 (8 bytes) | n=10  | 40.83 us  | 36.58 us | 81.26 us  | 111.89 us
-number f64 (8 bytes) | n=100 | 203.57 us | 92.37 us | 314.11 us | 263.05 us
-large string 1 MiB   | n=1   | 371.10 us | 3.74 ms  | 3.73 ms   | 2.97 ms  
-large string 1 MiB   | n=10  | 8.44 ms   | 8.41 ms  | 15.75 ms  | 14.45 ms 
-large string 1 MiB   | n=100 | 40.81 ms  | 61.62 ms | 105.51 ms | 106.67 ms
-Uint8Array 1 MiB     | n=1   | 400.45 us | 3.03 ms  | 5.58 ms   | 5.81 ms  
-Uint8Array 1 MiB     | n=10  | 8.41 ms   | 7.80 ms  | 9.52 ms   | 14.37 ms 
-Uint8Array 1 MiB     | n=100 | 43.71 ms  | 59.77 ms | 72.39 ms  | 81.71 ms 
+benchmark            | batch | tokio     | bun      | node     | deno    
+---------------------+-------+-----------+----------+----------+---------
+number f64 (8 bytes) | n=1   | 7.41 us   | -        | -        | -       
+number f64 (8 bytes) | n=10  | 14.43 us  | -        | -        | -       
+number f64 (8 bytes) | n=100 | 82.24 us  | -        | -        | -       
+large string 1 MiB   | n=1   | -         | -        | -        | -       
+large string 1 MiB   | n=10  | -         | -        | -        | -       
+large string 1 MiB   | n=100 | -         | -        | -        | -       
+Uint8Array 1 MiB     | n=1   | 170.53 us | 3.18 ms  | 2.50 ms  | 3.57 ms 
+Uint8Array 1 MiB     | n=10  | 4.85 ms   | 6.56 ms  | 10.27 ms | 17.50 ms
+Uint8Array 1 MiB     | n=100 | 44.28 ms  | 49.51 ms | 63.96 ms | 70.44 ms
 ```
 
 ## Avg Ratio Vs Tokio
@@ -62,15 +62,15 @@ Uint8Array 1 MiB     | n=100 | 43.71 ms  | 59.77 ms | 72.39 ms  | 81.71 ms
 ```text
 benchmark            | batch | bun/tokio | node/tokio | deno/tokio
 ---------------------+-------+-----------+------------+-----------
-number f64 (8 bytes) | n=1   | 0.56x     | 0.51x      | 1.66x     
-number f64 (8 bytes) | n=10  | 0.49x     | 0.63x      | 0.44x     
-number f64 (8 bytes) | n=100 | 0.90x     | 0.70x      | 0.71x     
-large string 1 MiB   | n=1   | 5.36x     | 12.86x     | 6.22x     
-large string 1 MiB   | n=10  | 0.97x     | 1.74x      | 1.68x     
-large string 1 MiB   | n=100 | 1.32x     | 2.23x      | 2.21x     
-Uint8Array 1 MiB     | n=1   | 4.75x     | 8.62x      | 4.18x     
-Uint8Array 1 MiB     | n=10  | 1.13x     | 1.12x      | 1.37x     
-Uint8Array 1 MiB     | n=100 | 1.26x     | 1.45x      | 1.59x     
+number f64 (8 bytes) | n=1   | -         | -          | -         
+number f64 (8 bytes) | n=10  | -         | -          | -         
+number f64 (8 bytes) | n=100 | -         | -          | -         
+large string 1 MiB   | n=1   | -         | -          | -         
+large string 1 MiB   | n=10  | -         | -          | -         
+large string 1 MiB   | n=100 | -         | -          | -         
+Uint8Array 1 MiB     | n=1   | 5.21x     | 12.61x     | 6.23x     
+Uint8Array 1 MiB     | n=10  | 0.97x     | 1.07x      | 1.40x     
+Uint8Array 1 MiB     | n=100 | 0.83x     | 1.26x      | 1.46x     
 ```
 
 ## Uint8Array Size Sweep Avg Latency (less is better)
@@ -78,24 +78,24 @@ Uint8Array 1 MiB     | n=100 | 1.26x     | 1.45x      | 1.59x
 ```text
 size    | tokio     | bun       | node      | deno     
 --------+-----------+-----------+-----------+----------
-8 B     | 82.99 us  | 62.80 us  | 88.20 us  | 107.01 us
-16 B    | 81.91 us  | 56.24 us  | 65.37 us  | 95.78 us 
-32 B    | 85.70 us  | 49.48 us  | 65.76 us  | 85.05 us 
-64 B    | 76.98 us  | 42.68 us  | 66.88 us  | 78.27 us 
-128 B   | 92.53 us  | 53.53 us  | 79.28 us  | 84.39 us 
-256 B   | 99.70 us  | 63.42 us  | 83.89 us  | 100.44 us
-512 B   | 86.67 us  | 68.55 us  | 97.07 us  | 118.03 us
-1 KiB   | 101.42 us | 171.09 us | 157.61 us | 169.50 us
-2 KiB   | 191.25 us | 194.62 us | 220.68 us | 233.39 us
-4 KiB   | 195.56 us | 260.16 us | 324.39 us | 391.43 us
-8 KiB   | 208.84 us | 397.05 us | 465.89 us | 539.98 us
-16 KiB  | 279.25 us | 649.18 us | 741.47 us | 899.81 us
-32 KiB  | 1.48 ms   | 1.14 ms   | 1.27 ms   | 1.41 ms  
-64 KiB  | 2.71 ms   | 2.38 ms   | 2.49 ms   | 2.89 ms  
-128 KiB | 5.66 ms   | 5.02 ms   | 5.11 ms   | 6.08 ms  
-256 KiB | 11.92 ms  | 10.56 ms  | 10.11 ms  | 11.96 ms 
-512 KiB | 23.06 ms  | 22.33 ms  | 22.66 ms  | 25.26 ms 
-1 MiB   | 29.48 ms  | 46.97 ms  | 52.53 ms  | 55.77 ms 
+8 B     | 73.62 us  | 69.20 us  | 78.98 us  | 116.08 us
+16 B    | 70.72 us  | 60.20 us  | 58.65 us  | 78.47 us 
+32 B    | 71.81 us  | 48.90 us  | 57.59 us  | 75.73 us 
+64 B    | 75.49 us  | 70.67 us  | 58.68 us  | 72.82 us 
+128 B   | 83.21 us  | 62.09 us  | 60.66 us  | 74.66 us 
+256 B   | 75.49 us  | 52.58 us  | 66.71 us  | 74.05 us 
+512 B   | 74.84 us  | 73.11 us  | 70.39 us  | 103.74 us
+1 KiB   | 78.73 us  | 172.66 us | 115.37 us | 156.04 us
+2 KiB   | 144.89 us | 227.89 us | 146.01 us | 307.85 us
+4 KiB   | 145.22 us | 229.93 us | 260.83 us | 455.26 us
+8 KiB   | 139.63 us | 316.36 us | 462.04 us | 614.61 us
+16 KiB  | 183.35 us | 530.75 us | 670.49 us | 1.01 ms  
+32 KiB  | 1.04 ms   | 868.04 us | 980.54 us | 1.72 ms  
+64 KiB  | 2.07 ms   | 1.58 ms   | 1.86 ms   | 2.46 ms  
+128 KiB | 4.08 ms   | 3.32 ms   | 4.79 ms   | 5.31 ms  
+256 KiB | 8.61 ms   | 6.81 ms   | 10.03 ms  | 12.49 ms 
+512 KiB | 17.85 ms  | 15.54 ms  | 20.93 ms  | 25.35 ms 
+1 MiB   | 37.00 ms  | 33.13 ms  | 46.62 ms  | 54.42 ms 
 ```
 
 ## Arc Comparison Size Sweep Avg Latency (less is better)
@@ -103,15 +103,15 @@ size    | tokio     | bun       | node      | deno
 Tokio uses `Arc<Vec<u8>>` here as a separate shared-bytes reference point, not the default apples-to-apples byte path.
 
 ```text
-size  | tokio    | bun      | node     | deno     
-------+----------+----------+----------+----------
-8 B   | 80.76 us | 70.31 us | 86.19 us | 97.79 us 
-16 B  | 79.35 us | 60.94 us | 73.73 us | 77.46 us 
-32 B  | 81.48 us | 57.04 us | 70.26 us | 77.03 us 
-64 B  | 80.14 us | 54.44 us | 75.94 us | 78.81 us 
-128 B | 79.89 us | 68.50 us | 82.51 us | 85.95 us 
-256 B | 79.48 us | 50.59 us | 85.94 us | 100.10 us
-512 B | 79.51 us | 74.78 us | 97.23 us | 123.11 us
+size  | tokio    | bun      | node      | deno     
+------+----------+----------+-----------+----------
+8 B   | 59.18 us | 81.52 us | 136.12 us | 119.92 us
+16 B  | 64.91 us | 63.31 us | 83.94 us  | 84.22 us 
+32 B  | 66.22 us | 61.01 us | 77.62 us  | 75.87 us 
+64 B  | 56.23 us | 55.52 us | 71.72 us  | 77.14 us 
+128 B | 55.91 us | 62.54 us | 65.93 us  | 79.93 us 
+256 B | 55.98 us | 57.70 us | 67.35 us  | 79.94 us 
+512 B | 54.64 us | 74.64 us | 98.49 us  | 140.18 us
 ```
 
 ## Arc Comparison Avg Ratio Vs Tokio
@@ -119,11 +119,11 @@ size  | tokio    | bun      | node     | deno
 ```text
 size  | bun/tokio | node/tokio | deno/tokio
 ------+-----------+------------+-----------
-8 B   | 0.87x     | 1.07x      | 1.21x     
-16 B  | 0.77x     | 0.93x      | 0.98x     
-32 B  | 0.70x     | 0.86x      | 0.95x     
-64 B  | 0.68x     | 0.95x      | 0.98x     
-128 B | 0.86x     | 1.03x      | 1.08x     
-256 B | 0.64x     | 1.08x      | 1.26x     
-512 B | 0.94x     | 1.22x      | 1.55x     
+8 B   | 1.38x     | 2.30x      | 2.03x     
+16 B  | 0.98x     | 1.29x      | 1.30x     
+32 B  | 0.92x     | 1.17x      | 1.15x     
+64 B  | 0.99x     | 1.28x      | 1.37x     
+128 B | 1.12x     | 1.18x      | 1.43x     
+256 B | 1.03x     | 1.20x      | 1.43x     
+512 B | 1.37x     | 1.80x      | 2.57x     
 ```
